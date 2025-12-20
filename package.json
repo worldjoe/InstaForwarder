@@ -1,0 +1,21 @@
+{
+  "name": "instagram-forwarder",
+  "version": "0.1.0",
+  "description": "Detect new Instagram reels from target users and forward them as DMs to an Instagram user.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
+    "lint": "echo \"No linter configured\"",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "instagram-private-api": "^1.44.0",
+    "twitter-api-v2": "^1.17.0",
+    "axios": "^1.4.0"
+  }
+}
