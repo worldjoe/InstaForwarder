@@ -1,8 +1,15 @@
+// ...existing code...
 const fs = require('fs');
 const path = require('path');
-const { IgApiClient } = require('instagram-private-api');
+const { IgApiClient, IgLoginTwoFactorRequiredError } = require('instagram-private-api');
+const readline = require('readline');
 
 const SEEN_FILE = path.resolve(process.cwd(), 'seen.json');
+
+function prompt(q) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => rl.question(q, ans => { rl.close(); resolve(ans); }));
+}
 
 class IGClient {
   constructor() {
@@ -32,22 +39,75 @@ class IGClient {
     }
   }
 
-  async init() {
+  // ...existing code...
+  async init(retries = 3) {
     const user = process.env.INSTAGRAM_USERNAME;
     const pass = process.env.INSTAGRAM_PASSWORD;
     if (!user || !pass) throw new Error('Missing INSTAGRAM_USERNAME or INSTAGRAM_PASSWORD');
 
     this.ig.state.generateDevice(user);
+
     try {
       await this.ig.simulate.preLoginFlow();
       await this.ig.account.login(user, pass);
       await this.ig.simulate.postLoginFlow();
       this.loggedIn = true;
+      return;
     } catch (err) {
-      throw new Error('Instagram login failed: ' + err.message);
+      const body = err && err.response && err.response.body;
+      // Two-factor required
+      if (body && (body.two_factor_required || err instanceof IgLoginTwoFactorRequiredError)) {
+        try {
+          const twoInfo = body.two_factor_info || {};
+          const twoFactorIdentifier = twoInfo.two_factor_identifier;
+          const methodHint = twoInfo?.obfuscated_phone ? `phone (${twoInfo.obfuscated_phone})` : (twoInfo?.username ? `email/other: ${twoInfo.username}` : 'unknown');
+          console.error(`Two-factor auth required. Verification method hint: ${methodHint}`);
+          const code = await prompt('Enter the 2FA code: ');
+          await this.ig.account.twoFactorLogin({
+            username: user,
+            verificationCode: code.trim(),
+            twoFactorIdentifier,
+            verificationMethod: twoInfo?.obfuscated_phone ? '1' : '0',
+            trustThisDevice: '1'
+          });
+          this.loggedIn = true;
+          return;
+        } catch (tfErr) {
+          console.error('2FA attempt failed:', tfErr.message || tfErr);
+          if (retries > 0) {
+            await prompt('Press Enter to retry 2FA attempt...');
+            return this.init(retries - 1);
+          }
+          throw new Error('Instagram two-factor login failed: ' + (tfErr.message || tfErr));
+        }
+      }
+
+      // Checkpoint / challenge flow (open challenge URL in browser and complete)
+      const checkpoint = body && (body.checkpoint_url || body.challenge || body.challenge_url);
+      if (checkpoint) {
+        const checkpointUrl = String(checkpoint).startsWith('http') ? checkpoint : `https://instagram.com${checkpoint}`;
+        console.error('Instagram checkpoint/challenge detected. Open this URL in your browser and complete verification:');
+        console.error(checkpointUrl);
+        await prompt('Press Enter after you complete the challenge in the browser to retry login...');
+        if (retries > 0) return this.init(retries - 1);
+        throw new Error('Instagram challenge not completed');
+      }
+
+      // Temporary block / token expired / rate limit handling
+      if (err && err.message && /Please wait|token_expired|Unauthorized|rate limit/i.test(err.message)) {
+        console.error('Temporary Instagram auth error (token/rate limit). Wait a few minutes then retry.');
+        if (retries > 0) {
+          await prompt('Press Enter to retry login...');
+          return this.init(retries - 1);
+        }
+        throw new Error('Instagram login failed after retries: ' + (err.message || err));
+      }
+
+      // Fallback: rethrow original error
+      throw new Error('Instagram login failed: ' + (err.message || err));
     }
   }
-
+  // ...existing code...
   async _resolveUserId(identifier) {
     if (/^\d+$/.test(String(identifier))) return Number(identifier);
     try {
