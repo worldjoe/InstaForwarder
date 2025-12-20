@@ -39,7 +39,9 @@ class IGClient {
 
     this.ig.state.generateDevice(user);
     try {
+      await this.ig.simulate.preLoginFlow();
       await this.ig.account.login(user, pass);
+      await this.ig.simulate.postLoginFlow();
       this.loggedIn = true;
     } catch (err) {
       throw new Error('Instagram login failed: ' + err.message);
