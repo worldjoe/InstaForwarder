@@ -50,7 +50,7 @@ class IGClient {
     try {
       await this.ig.simulate.preLoginFlow();
       await this.ig.account.login(user, pass);
-      await this.ig.simulate.postLoginFlow();
+      //await this.ig.simulate.postLoginFlow();
       this.loggedIn = true;
       return;
     } catch (err) {
@@ -95,7 +95,8 @@ class IGClient {
 
       // Temporary block / token expired / rate limit handling
       if (err && err.message && /Please wait|token_expired|Unauthorized|rate limit/i.test(err.message)) {
-        console.error('Temporary Instagram auth error (token/rate limit). Wait a few minutes then retry.');
+        console.error('Temporary Instagram auth error (token/rate limit). Wait a few minutes then retry.' + (err.message || ''));
+        console.error(err.response && err.response.body ? ' ' + JSON.stringify(err.response.body) : '');
         if (retries > 0) {
           await prompt('Press Enter to retry login...');
           return this.init(retries - 1);
