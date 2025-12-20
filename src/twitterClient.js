@@ -91,6 +91,8 @@ class TwitterClient {
         'media.fields': ['media_key', 'url', 'type', 'variants'],
         max_results: Math.min(Math.max(5, maxCount), 100)
       });
+      // rate limit handling
+      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.TWITTER_RATE_LIMIT_INTERVAL || '1000')));
     } catch (e) {
       // improved debug output for 400s
       if (e && e.data) {
