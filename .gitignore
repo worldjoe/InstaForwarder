@@ -3,3 +3,8 @@ node_modules/
 sessions/
 coverage/
 dist/
+seen.json
+session.json
+downloads/
+.vscode/
+package-lock.json
