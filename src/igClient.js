@@ -46,10 +46,47 @@ class IGClient {
     if (!user || !pass) throw new Error('Missing INSTAGRAM_USERNAME or INSTAGRAM_PASSWORD');
 
     this.ig.state.generateDevice(user);
+    // optional proxy from env
+    if (process.env.IG_PROXY) this.ig.state.proxyUrl = process.env.IG_PROXY;
+
+    // Persist state after every request completes
+    const sessionFile = path.resolve(process.cwd(), 'session.json');
+    this.ig.request.end$.subscribe(async () => {
+      try {
+        const serialized = await this.ig.state.serialize();
+        delete serialized.constants;
+        fs.writeFileSync(sessionFile, JSON.stringify(serialized, null, 2));
+      } catch (e) {
+        console.warn('Failed to persist session', e && e.message ? e.message : e);
+      }
+    });
+
+      // Try to load cached session first (deserialize accepts string or object)
+      if (fs.existsSync(sessionFile)) {
+        try {
+          const data = fs.readFileSync(sessionFile, 'utf8');
+          await this.ig.state.deserialize(data);
+          this.loggedIn = true;
+          return;
+        } catch (e) {
+          console.warn('Failed to deserialize cached session, logging in fresh', e && e.message ? e.message : e);
+        }
+      }
 
     try {
       await this.ig.simulate.preLoginFlow();
+      // No usable cached session, perform login
       await this.ig.account.login(user, pass);
+
+      // Force an immediate serialize/save once (subscription will also save on subsequent requests)
+      try {
+        const serialized = await this.ig.state.serialize();
+        delete serialized.constants;
+        fs.writeFileSync(sessionFile, JSON.stringify(serialized, null, 2));
+      } catch (e) {
+        console.warn('Failed to cache session', e && e.message ? e.message : e);
+      }
+
       //await this.ig.simulate.postLoginFlow();
       this.loggedIn = true;
       return;
