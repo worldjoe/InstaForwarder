@@ -2,6 +2,13 @@
 
 Small automation to detect new Instagram Reels and Twitter posts from a list of target users and forward them as a DM to an Instagram user.
 This was initially created specifically so that I can watch Instagram Reels on my Meta Display glasses.
+Disclaimer
+
+WARNING: Using this bot may violate Instagram's Terms of Service and could
+result in the account specified by `INSTAGRAM_USERNAME` being suspended or
+permanently banned for automated/bot activity. For safety, create and use a
+separate Instagram account dedicated to this bot (do NOT use a personal or
+primary account). Use at your own risk.
 
 Quick start
 
@@ -24,3 +31,22 @@ Notes
 You need a Twitter Bearer token. Grab a free account here: https://developer.x.com/en/portal/products
 The free account only allows 1 request per 15 minutes.
 Twitter support is not fully tested yet...
+
+## Usage
+
+### Getting TikTok Cookie
+
+1. Install the browser extension "Cookie-Editor".
+2. Login to TikTok in your browser.
+3. Open the Cookie-Editor extension while on tiktok.com.
+4. Copy the cookie value you need and add it to your `.env` (or code) as:
+
+```
+COOKIE: "YOUR_COOKIE"
+```
+
+Provide the cookie string exactly as copied; this allows the TikTok downloader library to authenticate when required.
+
+### TIKTOK_MAX_DOWNLOADS
+
+This environment variable sets the maximum number of TikTok downloads allowed per session. The default value is set to 3.
