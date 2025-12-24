@@ -1,4 +1,6 @@
 # Instagram Forwarder
+I'm currently testing the aspect ratio and resolution limits on the glasses.
+I think it's 4:5 and 3.5MB. But I'm not getting consistant playback yet.
 
 Small automation to detect new Instagram Reels and Twitter posts from a list of target users and forward them as a DM to an Instagram user.
 This was initially created specifically so that I can watch Instagram Reels on my Meta Display glasses.
