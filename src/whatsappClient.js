@@ -66,73 +66,137 @@ class WhatsAppClient {
         }
         
         const media = MessageMedia.fromFilePath(mediaPath);
-        return this.client.sendMessage(toId, media);
+        const result = await this.client.sendMessage(toId, media);
+        
+        // Zero out the video file after sending to save disk space while keeping the file
+        // as a marker to prevent yt-dlp from re-downloading it. yt-dlp checks file existence,
+        // not file size, so a 0-byte file will still be recognized as "already downloaded"
+        try {
+            fs.writeFileSync(resolvedPath, '');
+            console.log(`Zeroed out file: ${resolvedPath}`);
+        } catch (err) {
+            console.warn('Failed to zero out file:', err.message);
+        }
+        
+        return result;
     }
 
     // Re-encode media to reduce file size using whatsAppReEncode.bat
     async _reencodeMedia(filePath) {
-        // First resize the resolution
-        const resizeBatchFile = path.resolve(process.cwd(), 'src', 'resizeResolution.bat');
+        // First resize the resolution using ffmpeg directly to 320x400 with padding
+        // which I believe is the Meta Display's preferred resolution for videos
         let currentPath = filePath;
         
-        if (fs.existsSync(resizeBatchFile)) {
-            try {
-            const resizeCommand = `"${resizeBatchFile}" "${filePath}"`;
-            console.log(`Running resize resolution: ${resizeCommand}`);
-            const resizeResult = execSync(resizeCommand, { 
+        try {
+            const dir = path.dirname(filePath);
+            const nameWithoutExt = path.basename(filePath, path.extname(filePath));
+            const resizedFile = path.join(dir, `${nameWithoutExt} 45.mp4`);
+            
+            // ffmpeg -i "%input_file%" -vf "scale=-1:400,pad=320:400:(320-iw)/2:(400-ih)/2:black" -c:v libx265 -tag:v hvc1 -c:a copy "%output_file%"
+            const ffmpegCommand = `ffmpeg -i "${filePath}" -vf "scale=-1:400,pad=320:400:(320-iw)/2:(400-ih)/2:black" -c:v libx265 -tag:v hvc1 -c:a copy "${resizedFile}"`;
+            console.log(`Running resize resolution: ${ffmpegCommand}`);
+            const resizeResult = execSync(ffmpegCommand, { 
                 cwd: process.cwd(),
                 encoding: 'utf8'
             });
             console.log('Resize resolution output:', resizeResult);
             
-            // Construct the expected output filename from resize
-            const dir = path.dirname(filePath);
-            const nameWithoutExt = path.basename(filePath, path.extname(filePath));
-            const resizedFile = path.join(dir, `${nameWithoutExt} 45.mp4`);
-            
             if (fs.existsSync(resizedFile)) {
                 console.log(`Resized file saved to: ${resizedFile}`);
-                currentPath = resizedFile;
+                // Rename resized file to overwrite original
+                fs.unlinkSync(filePath);
+                fs.renameSync(resizedFile, filePath);
+                console.log(`Renamed resized file to: ${filePath}`);
+                currentPath = filePath;
             } else {
                 console.warn('Resized file not found, using original for re-encode');
             }
-            } catch (err) {
+        } catch (err) {
             console.warn('Resize resolution failed:', err.message || err);
-            }
-        } else {
-            console.warn('resizeResolution.bat not found, skipping resolution resize');
         }
         
-        // Then re-encode the file (using resized version if available)
-        const batchFile = path.resolve(process.cwd(), 'src', 'whatsAppReEncode.bat');
-        if (!fs.existsSync(batchFile)) {
-            console.warn('whatsAppReEncode.bat not found, sending original file');
+        // Then re-encode the file so that it's no bigger than 3.5MB. Above that limit you will get a message
+        // to open your phone to view large media.
+        const targetVideoSizeMB = 3.5;
+        const twopass = true;
+        
+        // Check if file is already small enough
+        const stats = fs.statSync(currentPath);
+        const fileSizeInMB = stats.size / (1024 * 1024);
+        if (fileSizeInMB <= targetVideoSizeMB) {
+            console.log(`File is ${fileSizeInMB.toFixed(2)}MB (<= ${targetVideoSizeMB}MB), skipping re-encode`);
             return filePath;
         }
-
         
         try {
-            // Run the batch file with target size of 4MB
-            // Use execSync with manual quoting to properly handle spaces in file paths
-            const command = `"${batchFile}" "${currentPath}" 3.5`;
-            console.log(`Running re-encode: ${command}`);
-            const result = execSync(command, { 
+            // Get audio duration and bitrate using ffprobe
+            console.log(`Probing file for duration and audio bitrate: ${currentPath}`);
+            
+            // Get duration
+            const durationOutput = execSync(`ffprobe -v error -show_streams -select_streams a "${currentPath}"`, {
+            cwd: process.cwd(),
+            encoding: 'utf8'
+            });
+            const durationMatch = durationOutput.match(/duration=([\d.]+)/);
+            if (!durationMatch) {
+            throw new Error('Could not determine audio duration');
+            }
+            const duration = parseFloat(durationMatch[1]);
+            console.log(`Duration: ${duration}s`);
+            
+            // Get audio bitrate
+            const bitrateOutput = execSync(`ffprobe -v error -pretty -show_streams -select_streams a "${currentPath}"`, {
+            cwd: process.cwd(),
+            encoding: 'utf8'
+            });
+            const bitrateMatch = bitrateOutput.match(/bit_rate=(\d+)/);
+            if (!bitrateMatch) {
+            throw new Error('Could not determine audio bitrate');
+            }
+            const audioBitrate = parseInt(bitrateMatch[1]) / 1000; // Convert to kbps
+            console.log(`Audio bitrate: ${audioBitrate}k`);
+            
+            // Calculate target video bitrate
+            // Formula: (target_size_MB * 8192) / (1.048576 * duration) - audio_bitrate
+            const targetVideoBitrate = Math.floor((targetVideoSizeMB * 8192) / (1.048576 * duration) - audioBitrate);
+            console.log(`Target video bitrate: ${targetVideoBitrate}k`);
+            
+            // Construct output filename
+            const dir = path.dirname(currentPath);
+            const nameWithoutExt = path.basename(currentPath, path.extname(currentPath));
+            const encodedFile = path.join(dir, `${nameWithoutExt} ${targetVideoSizeMB}MB.mp4`);
+            
+            // Two-pass encoding if enabled
+            if (twopass) {
+            console.log('Two-Pass Encoding: Pass 1');
+            execSync(`ffmpeg -y -i "${currentPath}" -c:v libx264 -b:v ${targetVideoBitrate}k -pass 1 -an -f mp4 nul`, {
                 cwd: process.cwd(),
                 encoding: 'utf8'
             });
-            console.log('Re-encode command output:', result);
             
-            // Construct the expected output filename (from the batch script logic)
-            const dir = path.dirname(currentPath);
-            const nameWithoutExt = path.basename(currentPath, path.extname(currentPath));
-            const encodedFile = path.join(dir, `${nameWithoutExt} 3.5MB.mp4`);
+            console.log('Two-Pass Encoding: Pass 2');
+            execSync(`ffmpeg -i "${currentPath}" -c:v libx264 -b:v ${targetVideoBitrate}k -pass 2 -c:a aac -b:a ${audioBitrate}k "${encodedFile}"`, {
+                cwd: process.cwd(),
+                encoding: 'utf8'
+            });
+            } else {
+            console.log('Single-Pass Encoding');
+            execSync(`ffmpeg -i "${currentPath}" -c:v libx264 -b:v ${targetVideoBitrate}k -c:a aac -b:a ${audioBitrate}k "${encodedFile}"`, {
+                cwd: process.cwd(),
+                encoding: 'utf8'
+            });
+            }
             
             if (fs.existsSync(encodedFile)) {
-                console.log(`Re-encoded file saved to: ${encodedFile}`);
-                return encodedFile;
+            console.log(`Re-encoded file saved to: ${encodedFile}`);
+            // Rename encoded file to overwrite original
+            fs.unlinkSync(filePath);
+            fs.renameSync(encodedFile, filePath);
+            console.log(`Renamed encoded file to: ${filePath}`);
+            return filePath;
             } else {
-                console.warn('Re-encoded file not found, using original');
-                return currentPath;
+            console.warn('Re-encoded file not found, using original');
+            return filePath;
             }
         } catch (err) {
             console.warn('Re-encoding failed:', err.message || err);
