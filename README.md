@@ -59,6 +59,7 @@ https://wwebjs.dev/guide/creating-your-bot/handling-attachments.html#caveat-for-
 Set the path in .env for this Chrome.
 npx @puppeteer/browsers --help
 npx @puppeteer/browsers install chrome@stable
+this will output the path it installed to. Add that to your .env file
 
 ### Whats APP support.
 The best way to send messages/videos to yourself. Significantly less risky than Instagram. But use at your own risk. You are likely violating Whats App's Terms of Service.
