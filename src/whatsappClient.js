@@ -125,14 +125,14 @@ class WhatsAppClient {
             // Construct the expected output filename (from the batch script logic)
             const dir = path.dirname(currentPath);
             const nameWithoutExt = path.basename(currentPath, path.extname(currentPath));
-            const encodedFile = path.join(dir, `${nameWithoutExt} 4MB.mp4`);
+            const encodedFile = path.join(dir, `${nameWithoutExt} 3.5MB.mp4`);
             
             if (fs.existsSync(encodedFile)) {
                 console.log(`Re-encoded file saved to: ${encodedFile}`);
                 return encodedFile;
             } else {
                 console.warn('Re-encoded file not found, using original');
-                return filePath;
+                return currentPath;
             }
         } catch (err) {
             console.warn('Re-encoding failed:', err.message || err);
