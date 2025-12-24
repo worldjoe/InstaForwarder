@@ -60,7 +60,7 @@ class WhatsAppClient {
             const stats = fs.statSync(resolvedPath);
             const fileSizeInMB = stats.size / (1024 * 1024);
             if (fileSizeInMB > 4) {
-                onsole.log(`File ${path.basename(resolvedPath)} is ${fileSizeInMB.toFixed(2)}MB (> 4MB), re-encoding...`);
+                console.log(`File ${path.basename(resolvedPath)} is ${fileSizeInMB.toFixed(2)}MB (> 4MB), re-encoding...`);
                 mediaPath = await this._reencodeMedia(resolvedPath);
             }
         }
