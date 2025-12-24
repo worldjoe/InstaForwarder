@@ -48,5 +48,18 @@ COOKIE: "YOUR_COOKIE"
 Provide the cookie string exactly as copied; this allows the TikTok downloader library to authenticate when required.
 
 ### TIKTOK_MAX_DOWNLOADS
+Currently windows only (because my .bat files), but could be ported to *nix easily.
+You need yt-dlp/yt-dlp.exe downloaded and in your path to download TikTok videos.
+You also need ffmpeg downloaded and in your path to do the conversion of videos to the resolution and size that the glasses support.
 
 This environment variable sets the maximum number of TikTok downloads allowed per session. The default value is set to 3.
+
+Install "Chrome for Testing" which supports puppeteer. This is because the whatsapp-web.js client requires a non headless browser for sending media.
+https://wwebjs.dev/guide/creating-your-bot/handling-attachments.html#caveat-for-sending-videos-and-gifs
+Set the path in .env for this Chrome.
+npx @puppeteer/browsers --help
+npx @puppeteer/browsers install chrome@stable
+
+### Whats APP support.
+The best way to send messages/videos to yourself. Significantly less risky than Instagram. But use at your own risk. You are likely violating Whats App's Terms of Service.
+When it launches Chrome you'll need to login to WhatsApp using your phone. On subsequent runs it will remember your cookie/session information in .wwebjs_*

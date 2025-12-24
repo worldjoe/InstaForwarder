@@ -8,3 +8,5 @@ session.json
 downloads/
 .vscode/
 package-lock.json
+.wwebjs_cache
+.wwebjs_auth
