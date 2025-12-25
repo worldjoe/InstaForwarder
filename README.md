@@ -1,10 +1,10 @@
-# Instagram Forwarder
+# Meta Rayban Display Forwarder
 I'm currently testing the aspect ratio and resolution limits on the glasses.
 I think it's 4:5 and 3.5MB. But I'm not getting consistant playback yet.
 So if you have news on this front, please open an Issue against this repo and I will investigate.
 
-Small automation to detect new Instagram Reels and TikTok posts from a list of target users and forward them as a DM to an Instagram or WhatsApp user.
-This was initially created specifically so that I can watch Instagram Reels on my Meta Display glasses.
+Small automation to detect new Instagram Reels, TikTok posts, and RedGif creators from a list of target users and forward them as a DM to an Instagram or WhatsApp user.
+This was created specifically so that I can watch Instagram Reels on my Meta Display glasses.
 
 ### Disclaimer
 **WARNING**: Using this bot may violate the Terms of Service of any connected service you enable and could
@@ -15,7 +15,7 @@ primary account). Use at your own risk.
 
 Quick start
 
-1. Copy `.env.example` to `.env` and fill `INSTAGRAM_USERNAME`, `INSTAGRAM_PASSWORD`, and `INSTAGRAM_TARGET_IDS`.
+1. Copy `.env.example` to `.env` and fill in the settings there.
 2. Install dependencies:
 
 ```bash
