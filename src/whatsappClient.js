@@ -2,6 +2,7 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
+const logger = require('./logger');
 
 class WhatsAppClient {
     constructor(options = {}) {
@@ -37,7 +38,7 @@ class WhatsAppClient {
             this.client.once('ready', onReady);
             this.client.once('auth_failure', onAuthFail);
             this.client.on('disconnected', (reason) => {
-                console.warn('WhatsApp client disconnected', reason);
+                logger.warn('WhatsApp client disconnected', { reason });
             });
 
             this.client.initialize();
@@ -60,7 +61,7 @@ class WhatsAppClient {
             const stats = fs.statSync(resolvedPath);
             const fileSizeInMB = stats.size / (1024 * 1024);
             if (fileSizeInMB > 4) {
-                console.log(`File ${path.basename(resolvedPath)} is ${fileSizeInMB.toFixed(2)}MB (> 4MB), re-encoding...`);
+                logger.debug('File exceeds 4MB, re-encoding', { file: path.basename(resolvedPath), sizeMB: fileSizeInMB.toFixed(2) });
                 mediaPath = await this._reencodeMedia(resolvedPath);
             }
         }
@@ -73,9 +74,9 @@ class WhatsAppClient {
         // not file size, so a 0-byte file will still be recognized as "already downloaded"
         try {
             fs.writeFileSync(resolvedPath, '');
-            console.log(`Zeroed out file: ${resolvedPath}`);
+            logger.trace('Zeroed out file', { file: resolvedPath });
         } catch (err) {
-            console.warn('Failed to zero out file:', err.message);
+            logger.warn('Failed to zero out file', { error: err.message });
         }
         
         return result;
@@ -94,25 +95,25 @@ class WhatsAppClient {
             
             // ffmpeg -i "%input_file%" -vf "scale=-1:400,pad=320:400:(320-iw)/2:(400-ih)/2:black" -c:v libx265 -tag:v hvc1 -c:a copy "%output_file%"
             const ffmpegCommand = `ffmpeg -i "${filePath}" -vf "scale=-1:400,pad=320:400:(320-iw)/2:(400-ih)/2:black" -c:v libx265 -tag:v hvc1 -c:a copy "${resizedFile}"`;
-            console.log(`Running resize resolution: ${ffmpegCommand}`);
+            logger.debug('Running resize resolution', { command: ffmpegCommand });
             const resizeResult = execSync(ffmpegCommand, { 
                 cwd: process.cwd(),
                 encoding: 'utf8'
             });
-            console.log('Resize resolution output:', resizeResult);
+            logger.trace('Resize resolution output', { output: resizeResult });
             
             if (fs.existsSync(resizedFile)) {
-                console.log(`Resized file saved to: ${resizedFile}`);
+                logger.debug('Resized file saved', { file: resizedFile });
                 // Rename resized file to overwrite original
                 fs.unlinkSync(filePath);
                 fs.renameSync(resizedFile, filePath);
-                console.log(`Renamed resized file to: ${filePath}`);
+                logger.trace('Renamed resized file', { from: resizedFile, to: filePath });
                 currentPath = filePath;
             } else {
-                console.warn('Resized file not found, using original for re-encode');
+                logger.warn('Resized file not found, using original for re-encode');
             }
         } catch (err) {
-            console.warn('Resize resolution failed:', err.message || err);
+            logger.warn('Resize resolution failed', { error: err.message || err });
         }
         
         // Then re-encode the file so that it's no bigger than 3.5MB. Above that limit you will get a message
@@ -124,13 +125,13 @@ class WhatsAppClient {
         const stats = fs.statSync(currentPath);
         const fileSizeInMB = stats.size / (1024 * 1024);
         if (fileSizeInMB <= targetVideoSizeMB) {
-            console.log(`File is ${fileSizeInMB.toFixed(2)}MB (<= ${targetVideoSizeMB}MB), skipping re-encode`);
+            logger.debug('File size acceptable, skipping re-encode', { sizeMB: fileSizeInMB.toFixed(2), targetMB: targetVideoSizeMB });
             return filePath;
         }
         
         try {
             // Get audio duration and bitrate using ffprobe
-            console.log(`Probing file for duration and audio bitrate: ${currentPath}`);
+            logger.debug('Probing file for duration and audio bitrate', { file: currentPath });
             
             // Get duration
             const durationOutput = execSync(`ffprobe -v error -show_streams -select_streams a "${currentPath}"`, {
@@ -142,7 +143,7 @@ class WhatsAppClient {
             throw new Error('Could not determine audio duration');
             }
             const duration = parseFloat(durationMatch[1]);
-            console.log(`Duration: ${duration}s`);
+            logger.trace('File duration', { duration: `${duration}s` });
             
             // Get audio bitrate
             const bitrateOutput = execSync(`ffprobe -v error -pretty -show_streams -select_streams a "${currentPath}"`, {
@@ -154,12 +155,12 @@ class WhatsAppClient {
             throw new Error('Could not determine audio bitrate');
             }
             const audioBitrate = parseInt(bitrateMatch[1]) / 1000; // Convert to kbps
-            console.log(`Audio bitrate: ${audioBitrate}k`);
+            logger.trace('Audio bitrate', { bitrate: `${audioBitrate}k` });
             
             // Calculate target video bitrate
             // Formula: (target_size_MB * 8192) / (1.048576 * duration) - audio_bitrate
             const targetVideoBitrate = Math.floor((targetVideoSizeMB * 8192) / (1.048576 * duration) - audioBitrate);
-            console.log(`Target video bitrate: ${targetVideoBitrate}k`);
+            logger.debug('Target video bitrate', { bitrate: `${targetVideoBitrate}k` });
             
             // Construct output filename
             const dir = path.dirname(currentPath);
@@ -168,19 +169,19 @@ class WhatsAppClient {
             
             // Two-pass encoding if enabled
             if (twopass) {
-            console.log('Two-Pass Encoding: Pass 1');
+            logger.debug('Two-Pass Encoding: Pass 1');
             execSync(`ffmpeg -y -i "${currentPath}" -c:v libx264 -b:v ${targetVideoBitrate}k -pass 1 -an -f mp4 nul`, {
                 cwd: process.cwd(),
                 encoding: 'utf8'
             });
             
-            console.log('Two-Pass Encoding: Pass 2');
+            logger.debug('Two-Pass Encoding: Pass 2');
             execSync(`ffmpeg -i "${currentPath}" -c:v libx264 -b:v ${targetVideoBitrate}k -pass 2 -c:a aac -b:a ${audioBitrate}k "${encodedFile}"`, {
                 cwd: process.cwd(),
                 encoding: 'utf8'
             });
             } else {
-            console.log('Single-Pass Encoding');
+            logger.debug('Single-Pass Encoding');
             execSync(`ffmpeg -i "${currentPath}" -c:v libx264 -b:v ${targetVideoBitrate}k -c:a aac -b:a ${audioBitrate}k "${encodedFile}"`, {
                 cwd: process.cwd(),
                 encoding: 'utf8'
@@ -188,18 +189,18 @@ class WhatsAppClient {
             }
             
             if (fs.existsSync(encodedFile)) {
-            console.log(`Re-encoded file saved to: ${encodedFile}`);
+            logger.debug('Re-encoded file saved', { file: encodedFile });
             // Rename encoded file to overwrite original
             fs.unlinkSync(filePath);
             fs.renameSync(encodedFile, filePath);
-            console.log(`Renamed encoded file to: ${filePath}`);
+            logger.trace('Renamed encoded file', { from: encodedFile, to: filePath });
             return filePath;
             } else {
-            console.warn('Re-encoded file not found, using original');
+            logger.warn('Re-encoded file not found, using original');
             return filePath;
             }
         } catch (err) {
-            console.warn('Re-encoding failed:', err.message || err);
+            logger.warn('Re-encoding failed', { error: err.message || err });
             return filePath;
         }
     }

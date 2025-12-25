@@ -70,7 +70,11 @@ npx @puppeteer/browsers install chrome@stable
 ```
 this will output the path it installed to. Add that to your .env file
 
+### RedGif support
+A "friend" of mine asked for something a little more NSFW. Redgif support has been added.
+
 ## Twitter support
 You need a Twitter Bearer token. Grab a free account here: https://developer.x.com/en/portal/products
 The free account only allows 1 request per 15 minutes and also has a monthly limit!
 Twitter is not fully implemented and probably will never be without someone providing a pull request or financial support to pay for a Twitter API account.
+

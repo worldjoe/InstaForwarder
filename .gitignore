@@ -10,3 +10,6 @@ downloads/
 package-lock.json
 .wwebjs_cache
 .wwebjs_auth
+logs/
+*.log
+ffmpeg2pass-*.log*

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { IgApiClient, IgLoginTwoFactorRequiredError } = require('instagram-private-api');
 const readline = require('readline');
+const logger = require('./logger');
 
 const SEEN_FILE = path.resolve(process.cwd(), 'seen.json');
 
@@ -35,7 +36,7 @@ class IGClient {
     try {
       fs.writeFileSync(SEEN_FILE, JSON.stringify(this.seen, null, 2));
     } catch (e) {
-      console.error('Failed saving seen file', e);
+      logger.error('Failed saving seen file', { error: e.message || e });
     }
   }
 
@@ -57,7 +58,7 @@ class IGClient {
         delete serialized.constants;
         fs.writeFileSync(sessionFile, JSON.stringify(serialized, null, 2));
       } catch (e) {
-        console.warn('Failed to persist session', e && e.message ? e.message : e);
+        logger.warn('Failed to persist session', { error: e.message || e });
       }
     });
 
@@ -69,7 +70,7 @@ class IGClient {
           this.loggedIn = true;
           return;
         } catch (e) {
-          console.warn('Failed to deserialize cached session, logging in fresh', e && e.message ? e.message : e);
+          logger.warn('Failed to deserialize cached session, logging in fresh', { error: e.message || e });
         }
       }
 
@@ -84,7 +85,7 @@ class IGClient {
         delete serialized.constants;
         fs.writeFileSync(sessionFile, JSON.stringify(serialized, null, 2));
       } catch (e) {
-        console.warn('Failed to cache session', e && e.message ? e.message : e);
+        logger.warn('Failed to cache session', { error: e.message || e });
       }
 
       //await this.ig.simulate.postLoginFlow();
@@ -98,7 +99,7 @@ class IGClient {
           const twoInfo = body.two_factor_info || {};
           const twoFactorIdentifier = twoInfo.two_factor_identifier;
           const methodHint = twoInfo?.obfuscated_phone ? `phone (${twoInfo.obfuscated_phone})` : (twoInfo?.username ? `email/other: ${twoInfo.username}` : 'unknown');
-          console.error(`Two-factor auth required. Verification method hint: ${methodHint}`);
+          logger.error('Two-factor auth required', { method: methodHint });
           const code = await prompt('Enter the 2FA code: ');
           await this.ig.account.twoFactorLogin({
             username: user,
@@ -110,7 +111,7 @@ class IGClient {
           this.loggedIn = true;
           return;
         } catch (tfErr) {
-          console.error('2FA attempt failed:', tfErr.message || tfErr);
+          logger.error('2FA attempt failed', { error: tfErr.message || tfErr });
           if (retries > 0) {
             await prompt('Press Enter to retry 2FA attempt...');
             return this.init(retries - 1);
@@ -123,8 +124,7 @@ class IGClient {
       const checkpoint = body && (body.checkpoint_url || body.challenge || body.challenge_url);
       if (checkpoint) {
         const checkpointUrl = String(checkpoint).startsWith('http') ? checkpoint : `https://instagram.com${checkpoint}`;
-        console.error('Instagram checkpoint/challenge detected. Open this URL in your browser and complete verification:');
-        console.error(checkpointUrl);
+        logger.error('Instagram checkpoint/challenge detected. Open this URL in your browser and complete verification', { url: checkpointUrl });
         await prompt('Press Enter after you complete the challenge in the browser to retry login...');
         if (retries > 0) return this.init(retries - 1);
         throw new Error('Instagram challenge not completed');
@@ -132,8 +132,10 @@ class IGClient {
 
       // Temporary block / token expired / rate limit handling
       if (err && err.message && /Please wait|token_expired|Unauthorized|rate limit/i.test(err.message)) {
-        console.error('Temporary Instagram auth error (token/rate limit). Wait a few minutes then retry.' + (err.message || ''));
-        console.error(err.response && err.response.body ? ' ' + JSON.stringify(err.response.body) : '');
+        logger.error('Temporary Instagram auth error (token/rate limit). Wait a few minutes then retry', { 
+          error: err.message || '',
+          response: err.response && err.response.body ? err.response.body : undefined
+        });
         if (retries > 0) {
           await prompt('Press Enter to retry login...');
           return this.init(retries - 1);
@@ -178,7 +180,7 @@ class IGClient {
     try {
       items = await feed.items();
     } catch (e) {
-      console.error('Failed to fetch feed for', userIdOrName, e.message || e);
+      logger.error('Failed to fetch feed', { user: userIdOrName, error: e.message || e });
       return [];
     }
 

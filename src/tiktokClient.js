@@ -1,6 +1,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 const DOWNLOADS_DIR = path.resolve(process.cwd(), 'downloads');
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
@@ -62,10 +63,10 @@ class TikTokClient {
         // Normalize paths and ensure they exist
         for (const p of filePaths) {
           const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-          if (fs.existsSync(abs)) results.push(abs);
+            if (fs.existsSync(abs) && fs.statSync(abs).size > 0) results.push(abs);
         }
       } catch (e) {
-        console.error('yt-dlp TikTok fetch error for target', t, e && e.message ? e.message : e);
+        logger.error('TikTok fetch error', { target: t, error: e.message || e });
       }
     }
     return results;
