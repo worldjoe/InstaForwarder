@@ -54,10 +54,37 @@ You also need ffmpeg and ffprobe downloaded and in your path to do the conversio
 
 This environment variable sets the maximum number of TikTok downloads allowed per session. The default value is set to 3.
 
+### Getting Your TikTok Following List
+
+The `parseTikTokFollowing.js` script can help you easily populate `TIKTOK_TARGETS` in your `.env` file.
+
+**To download your TikTok data:**
+
+1. Open TikTok on your phone
+2. Tap on your profile (bottom right)
+3. Tap the hamburger menu icon (☰) in the top right
+4. Select "Settings and privacy"
+5. Go to "Account"
+6. Select "Download your data"
+7. Change the format to **JSON** (not TXT)
+8. Request the download
+9. Wait for the download to be ready (this can take anywhere from half a day to a full day)
+10. Once ready, download the zip file on your phone
+11. Forward the zip file to your email
+12. Extract the JSON file from the zip
+
+**To extract your following list:**
+
+```bash
+node src/parseTikTokFollowing.js path/to/user_data_tiktok.json
+```
+
+This will output a comma-delimited list of usernames that you can copy directly into the `TIKTOK_TARGETS` variable in your `.env` file.
+
 
 ### Whats APP support.
 The best way to send messages/videos to yourself. Significantly less risky than Instagram. But use at your own risk. You are likely violating Whats App's Terms of Service.
-When it launches Chrome you'll need to login to WhatsApp using your phone. On subsequent runs it will remember your cookie/session information in .wwebjs_*
+When it launches Chrome you'll need to login to WhatsApp using your phone to scan the QR code. On subsequent runs it will remember your cookie/session information in .wwebjs_*
 
 ## Chrome for Testing required for WhatsApp
 Install "Chrome for Testing" which supports puppeteer. This is because the whatsapp-web.js client requires a non headless browser for sending media.
@@ -71,7 +98,7 @@ npx @puppeteer/browsers install chrome@stable
 this will output the path it installed to. Add that to your .env file
 
 ### RedGif support
-A "friend" of mine asked for something a little more NSFW. Redgif support has been added.
+A "friend" of mine asked for something a little more NSFW. Redgif support has been added, but not thoroughly tested. Feel free to send PRs.
 
 ## Twitter support
 You need a Twitter Bearer token. Grab a free account here: https://developer.x.com/en/portal/products
