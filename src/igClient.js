@@ -39,6 +39,11 @@ class IGClient {
       logger.error('Failed saving seen file', { error: e.message || e });
     }
   }
+  
+  sleep() {
+    const randomBaseDelay = Math.floor(Math.random() * 1000) + 3000; // 3-4 second base delay
+    return new Promise(resolve => setTimeout(resolve, randomBaseDelay));
+  }
 
   // ...existing code...
   async init(retries = 3) {
@@ -151,9 +156,11 @@ class IGClient {
   async _resolveUserId(identifier) {
     if (/^\d+$/.test(String(identifier))) return Number(identifier);
     try {
+      await this.sleep();
       return await this.ig.user.getIdByUsername(identifier);
     } catch (e) {
       // fallback: attempt search
+      await this.sleep();
       const results = await this.ig.user.search(identifier);
       const exact = results.find(r => r.username && r.username.toLowerCase() === String(identifier).toLowerCase());
       if (exact) return exact.pk || exact.pk_id || exact.id;
@@ -178,6 +185,7 @@ class IGClient {
     const feed = this.ig.feed.user(uid);
     let items = [];
     try {
+      await this.sleep();
       items = await feed.items();
     } catch (e) {
       logger.error('Failed to fetch feed', { user: userIdOrName, error: e.message || e });
@@ -208,6 +216,7 @@ class IGClient {
     const recipientId = await this._resolveUserId(toUsername);
     const text = `${reel.url}`;
     try {
+      await this.sleep();
       await this.ig.entity.directThread([String(recipientId)]).broadcastText(text);
       return true;
     } catch (e) {
@@ -223,6 +232,7 @@ class IGClient {
     const ext = path.extname(filePath).toLowerCase();
     const isImage = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
     try {
+      await this.sleep();
       const thread = this.ig.entity.directThread([String(recipientId)]);
       if (isImage) {
         await thread.broadcastPhoto({ file: fs.createReadStream(filePath) });
