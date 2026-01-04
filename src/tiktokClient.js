@@ -16,9 +16,18 @@ class TikTokClient {
     if (this._checked) return;
     await new Promise((resolve, reject) => {
       execFile('yt-dlp', ['--version'], (err, stdout) => {
+        if (err) {
+          // Try running from current directory
+          const localPath = path.join(process.cwd(), 'yt-dlp');
+          execFile(localPath, ['--version'], (err2, stdout2) => {
         this._checked = true;
-        if (err) return reject(new Error('yt-dlp not found in PATH; install yt-dlp to use the yt-dlp TikTok client'));
-        return resolve(stdout && String(stdout).trim());
+        if (err2) return reject(new Error('yt-dlp not found in PATH or current directory; install yt-dlp to use the yt-dlp TikTok client'));
+        return resolve(stdout2 && String(stdout2).trim());
+          });
+        } else {
+          this._checked = true;
+          return resolve(stdout && String(stdout).trim());
+        }
       });
     });
   }
