@@ -102,6 +102,7 @@ class IGClient {
           
           this.loggedIn = loggedIn;
           if (this.loggedIn) {
+            logger.info('Instagram session restored from cache');
             return;
           } 
         } catch (e) {
@@ -114,6 +115,8 @@ class IGClient {
       // No usable cached session, perform login
       await this.ig.account.login(user, pass);
       logger.info('Instagram login successful');
+      logger.info(`Logged in with DeviceID: ${this.ig.state.deviceId}`);
+
 
       // Force an immediate serialize/save once (subscription will also save on subsequent requests)
       try {
@@ -124,7 +127,7 @@ class IGClient {
         logger.warn('Failed to cache session', { error: e.message || e });
       }
 
-      //await this.ig.simulate.postLoginFlow();
+      await this.ig.simulate.postLoginFlow();
       this.loggedIn = true;
       return;
     } catch (err) {
