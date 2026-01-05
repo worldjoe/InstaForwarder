@@ -1,9 +1,10 @@
 // ...existing code...
 const fs = require('fs');
 const path = require('path');
-const { IgApiClient, IgLoginTwoFactorRequiredError } = require('instagram-private-api');
+const { IgApiClient, IgLoginTwoFactorRequiredError, IgCheckpointError, IgLoginRequiredError } = require('instagram-private-api');
 const readline = require('readline');
 const logger = require('./logger');
+const { log } = require('console');
 
 const SEEN_FILE = path.resolve(process.cwd(), 'seen.json');
 
@@ -72,8 +73,37 @@ class IGClient {
         try {
           const data = fs.readFileSync(sessionFile, 'utf8');
           await this.ig.state.deserialize(data);
-          this.loggedIn = true;
-          return;
+
+          // Validate session with retry
+          let retryCount = 0;
+          let loggedIn = true;
+          const maxRetries = 2;
+
+          while (retryCount <= maxRetries) {
+            try {
+              await this.ig.account.currentUser();
+              break;
+            } catch (error) {
+              if (error instanceof IgCheckpointError) {
+                logger.error('Checkpoint error during session validation - account requires verification');
+                loggedIn = false;
+              }
+
+              if (error instanceof IgLoginRequiredError || retryCount === maxRetries) {
+                logger.warn('Session expired, logging in fresh');
+                loggedIn = false;
+              }
+
+              logger.warn(`Retry ${retryCount + 1} for session validation`);
+              await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+              retryCount++;
+            }
+          }
+          
+          this.loggedIn = loggedIn;
+          if (this.loggedIn) {
+            return;
+          } 
         } catch (e) {
           logger.warn('Failed to deserialize cached session, logging in fresh', { error: e.message || e });
         }
