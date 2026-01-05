@@ -113,6 +113,7 @@ class IGClient {
       await this.ig.simulate.preLoginFlow();
       // No usable cached session, perform login
       await this.ig.account.login(user, pass);
+      logger.info('Instagram login successful');
 
       // Force an immediate serialize/save once (subscription will also save on subsequent requests)
       try {
@@ -127,6 +128,7 @@ class IGClient {
       this.loggedIn = true;
       return;
     } catch (err) {
+      logger.error('Instagram login error', { error: err.message || err });
       const body = err && err.response && err.response.body;
       // Two-factor required
       if (body && (body.two_factor_required || err instanceof IgLoginTwoFactorRequiredError)) {
