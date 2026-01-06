@@ -4,7 +4,7 @@ const path = require('path');
 const { IgApiClient, IgLoginTwoFactorRequiredError, IgCheckpointError, IgLoginRequiredError } = require('instagram-private-api');
 const readline = require('readline');
 const logger = require('./logger');
-const { log } = require('console');
+const puppeteer = require('puppeteer');
 
 const SEEN_FILE = path.resolve(process.cwd(), 'seen.json');
 
@@ -18,6 +18,7 @@ class IGClient {
     this.ig = new IgApiClient();
     this.loggedIn = false;
     this.seen = {};
+    this.browser = null;
     this._loadSeen();
   }
 
@@ -52,7 +53,28 @@ class IGClient {
     const pass = process.env.INSTAGRAM_PASSWORD;
     if (!user || !pass) throw new Error('Missing INSTAGRAM_USERNAME or INSTAGRAM_PASSWORD');
 
-    this.ig.state.generateDevice(user);
+    // Check if all device config values are present
+    const hasFullDeviceConfig = 
+      process.env.IG_DEVICE_STRING && 
+      process.env.IG_DEVICE_ID && 
+      process.env.IG_UUID && 
+      process.env.IG_PHONE_ID && 
+      process.env.IG_ADID && 
+      process.env.IG_BUILD;
+
+    if (hasFullDeviceConfig) {
+      // Use device configuration from env
+      this.ig.state.deviceString = process.env.IG_DEVICE_STRING;
+      this.ig.state.deviceId = process.env.IG_DEVICE_ID;
+      this.ig.state.uuid = process.env.IG_UUID;
+      this.ig.state.phoneId = process.env.IG_PHONE_ID;
+      this.ig.state.adid = process.env.IG_ADID;
+      this.ig.state.build = process.env.IG_BUILD;
+    } else {
+      // Generate new device
+      this.ig.state.generateDevice(user);
+    }
+    
     // optional proxy from env
     if (process.env.IG_PROXY) this.ig.state.proxyUrl = process.env.IG_PROXY;
 
@@ -62,7 +84,8 @@ class IGClient {
       try {
         const serialized = await this.ig.state.serialize();
         delete serialized.constants;
-        fs.writeFileSync(sessionFile, JSON.stringify(serialized, null, 2));
+        const cookies = await this.ig.state.serializeCookieJar();
+        fs.writeFileSync(sessionFile, JSON.stringify({ ...serialized, cookies }, null, 2));
       } catch (e) {
         logger.warn('Failed to persist session', { error: e.message || e });
       }
@@ -72,7 +95,11 @@ class IGClient {
       if (fs.existsSync(sessionFile)) {
         try {
           const data = fs.readFileSync(sessionFile, 'utf8');
-          await this.ig.state.deserialize(data);
+          const sessionData = JSON.parse(data);
+          await this.ig.state.deserialize(sessionData);
+          if (sessionData.cookies) {
+            await this.ig.state.deserializeCookieJar(sessionData.cookies);
+          }
 
           // Validate session with retry
           let retryCount = 0;
@@ -104,7 +131,9 @@ class IGClient {
           if (this.loggedIn) {
             logger.info('Instagram session restored from cache');
             return;
-          } 
+          } else {
+            this.ig.state.clear();
+          }
         } catch (e) {
           logger.warn('Failed to deserialize cached session, logging in fresh', { error: e.message || e });
         }
@@ -122,12 +151,13 @@ class IGClient {
       try {
         const serialized = await this.ig.state.serialize();
         delete serialized.constants;
-        fs.writeFileSync(sessionFile, JSON.stringify(serialized, null, 2));
+        const cookies = await this.ig.state.serializeCookieJar();
+        fs.writeFileSync(sessionFile, JSON.stringify({ ...serialized, cookies }, null, 2));
       } catch (e) {
         logger.warn('Failed to cache session', { error: e.message || e });
       }
 
-      await this.ig.simulate.postLoginFlow();
+      //await this.ig.simulate.postLoginFlow();
       this.loggedIn = true;
       return;
     } catch (err) {
@@ -264,42 +294,129 @@ class IGClient {
   async sendMediaAsDM(filePath, toUsername) {
     if (!fs.existsSync(filePath)) throw new Error('File not found: ' + filePath);
     const recipientId = await this._resolveUserId(toUsername);
-    const ext = path.extname(filePath).toLowerCase();
-    const isImage = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
     try {
       await this.sleep();
       const thread = this.ig.entity.directThread([String(recipientId)]);
-      if (isImage) {
-        await thread.broadcastPhoto({ file: fs.createReadStream(filePath) });
-      } else {
-        await thread.broadcastVideo({ video: fs.createReadStream(filePath) });
+      // NOTE: broadcastVideo is broken - see https://github.com/subzeroid/instagrapi/issues/2216
+      // just going to to use puppeteer for both video and image for consistency
+      // await thread.broadcastVideo({ video: fileBuffer });
+      // Using puppeteer replay as workaround
+      return await this._sendVideoViaPuppeteer(filePath, recipientId);
+    } catch (e) {
+      logger.error('Failed to send media as DM', { error: e.message || e });
+      return false;
+    }
+  }
+
+  // Send video using puppeteer (workaround for broken broadcastVideo API)
+  async _sendVideoViaPuppeteer(filePath, recipientId) {
+    try {
+      if (!this.browser) {
+        this.browser = await puppeteer.launch({
+          headless: false,
+          executablePath: process.env.CHROME_PATH || undefined,
+          userDataDir: process.env.CHROME_USER_DATA || undefined
+        });
+        // Small delay after browser launch
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
       }
+
+      const page = await this.browser.newPage();
+      
+      // Random delay after opening new page
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
+
+      // Set viewport
+      await page.setViewport({
+        width: 1200,
+        height: 787,
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        isLandscape: false
+      });
+
+      // Navigate to DM thread
+      const dmUrl = `https://www.instagram.com/direct/t/${recipientId}/`;
+      await page.goto(dmUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+      // Wait for page to load - human-like delay
+      await this.sleep();
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+
+      // Wait for and upload file
+      const fileElement = await page.waitForSelector('input[type=file]', { timeout: 10000 });
+      
+      // Random delay before uploading (simulating human thinking/selecting file)
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1200 + 800));
+      await fileElement.uploadFile([path.resolve(filePath)]);
+
+      // Wait for upload to process - longer random delay
+      await this.sleep();
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 2000));
+
+      // Random delay before attempting to click send (human reviewing upload)
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+
+      // Click send button - try multiple selectors
+      const sendButtonSelectors = [
+        'button[aria-label="Send"]',
+        'div[role="button"][aria-label="Send"]',
+        'div.x1i10hfl:has-text("Send")',
+        'button:has-text("Send")'
+      ];
+
+      let clicked = false;
+      for (const selector of sendButtonSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 3000 });
+          // Small random delay before clicking
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 600 + 300));
+          
+          // Click at random position within element to avoid bot detection
+          const element = await page.$(selector);
+          if (element) {
+            const box = await element.boundingBox();
+            if (box) {
+              // Generate random click position within the element bounds
+              const randomX = Math.random() * box.width + box.x;
+              const randomY = Math.random() * box.height + box.y;
+              await page.mouse.click(randomX, randomY);
+              clicked = true;
+              break;
+            }
+          }
+        } catch (e) {
+          // Try next selector
+          continue;
+        }
+      }
+
+      if (!clicked) {
+        throw new Error('Could not find Send button');
+      }
+
+      // Wait for send to complete with random delay
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 2000));
+      
+      // Random delay before closing page
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 500));
+      await page.close();
+
+      logger.info('Video sent successfully via puppeteer', { filePath, recipientId });
       return true;
     } catch (e) {
-      console.error('Direct media send failed, attempting upload fallback', e && e.message ? e.message : e);
-      // Fallback: upload to feed and send post link
-      try {
-        if (isImage) {
-          const publish = await this.ig.publish.photo({ file: fs.createReadStream(filePath) });
-          const shortcode = publish && publish.media && (publish.media.code || publish.media[0] && publish.media[0].code);
-          const url = shortcode ? `https://www.instagram.com/p/${shortcode}/` : null;
-          await this.ig.entity.directThread([String(recipientId)]).broadcastText(url || 'Uploaded image');
-        } else {
-          const publish = await this.ig.publish.video({ video: fs.createReadStream(filePath), coverImage: fs.createReadStream(filePath) });
-          const shortcode = publish && publish.media && (publish.media.code || publish.media[0] && publish.media[0].code);
-          const url = shortcode ? `https://www.instagram.com/p/${shortcode}/` : null;
-          await this.ig.entity.directThread([String(recipientId)]).broadcastText(url || 'Uploaded video');
-        }
-        return true;
-      } catch (e2) {
-        console.error('Upload fallback failed', e2 && e2.message ? e2.message : e2);
-        return false;
-      }
+      logger.error('Failed to send video via puppeteer', { error: e.message || e, filePath, recipientId });
+      return false;
     }
   }
 
   async dispose() {
     // instagram-private-api manages its own connections; nothing to explicitly close
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+    }
   }
 }
 

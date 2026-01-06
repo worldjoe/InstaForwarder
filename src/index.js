@@ -21,7 +21,8 @@ function envEnabled(name) {
 }
 
 const IG_ENABLED = envEnabled('ENABLE_IG');
-const IG_ENABLED_FOR_SENDING = envEnabled('ENABLE_IG_SENDING');
+const IG_ENABLED_FORWARD_REELS = envEnabled('ENABLE_IG_FORWARD_REELS');
+const IG_ENABLED_SEND_MEDIA = envEnabled('ENABLE_IG_SEND_MEDIA');
 const WA_ENABLED_FOR_SENDING = envEnabled('WA_ENABLED_FOR_SENDING');
 const TWITTER_ENABLED = envEnabled('ENABLE_TWITTER');
 const TIKTOK_ENABLED = envEnabled('ENABLE_TIKTOK');
@@ -35,14 +36,22 @@ async function main() {
     }
   }
 
-  // If sending via IG is enabled we must have credentials and a forward target.
-  if (IG_ENABLED_FOR_SENDING) {
+  // If forwarding reels via IG is enabled we must have credentials and a forward target.
+  if (IG_ENABLED_FORWARD_REELS) {
     if (!process.env.INSTAGRAM_USERNAME || !process.env.INSTAGRAM_PASSWORD) {
       logger.error('Please set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in your .env');
       process.exit(1);
     }
     if (!process.env.INSTAGRAM_FORWARD_TO) {
-      logger.error('Please set INSTAGRAM_FORWARD_TO in your .env when ENABLE_IG_SENDING is true');
+      logger.error('Please set INSTAGRAM_FORWARD_TO in your .env when ENABLE_IG_FORWARD_REELS is true');
+      process.exit(1);
+    }
+  }
+
+  // If sending media via IG is enabled we must have a forward target.
+  if (IG_ENABLED_SEND_MEDIA) {
+    if (!process.env.INSTAGRAM_FORWARD_TO) {
+      logger.error('Please set INSTAGRAM_FORWARD_TO in your .env when ENABLE_IG_SEND_MEDIA is true');
       process.exit(1);
     }
   }
@@ -53,12 +62,15 @@ async function main() {
   }
 
   const clients = {};
-  // Initialize IG client only when sending via IG is enabled.
-  if (IG_ENABLED_FOR_SENDING || IG_ENABLED) clients.ig = new IGClient({ headless: true });
+  // Initialize IG client only when forward reels is enabled (needs API login)
+  if (IG_ENABLED_FORWARD_REELS || IG_ENABLED) clients.ig = new IGClient({ headless: true });
+  // For send media, we only need puppeteer (initialized on demand)
+  if (IG_ENABLED_SEND_MEDIA && !clients.ig) clients.ig = new IGClient({ headless: true });
   if (TWITTER_ENABLED) clients.twitter = new TwitterClient();
   if (WA_ENABLED_FOR_SENDING) clients.wa = new WhatsAppClient({ headless: true });
 
-  if (IG_ENABLED_FOR_SENDING || IG_ENABLED) {
+  // Only init (API login) when forward reels is enabled
+  if (IG_ENABLED_FORWARD_REELS || IG_ENABLED) {
     try {
       await clients.ig.init();
     } catch (err) {
@@ -132,7 +144,7 @@ async function pollOnce(clients) {
           if (WA_ENABLED_FOR_SENDING && clients.wa) {
             logger.info('Forwarding reel via WhatsApp', { url: reel.url, recipient: process.env.WHATSAPP_FORWARD_TO });
             await clients.wa.sendMessage(process.env.WHATSAPP_FORWARD_TO, reel.url);
-          } else if (IG_ENABLED_FOR_SENDING && clients.ig) {
+          } else if (IG_ENABLED_FORWARD_REELS && clients.ig) {
             logger.info('Forwarding reel via Instagram', { url: reel.url, recipient: process.env.INSTAGRAM_FORWARD_TO });
             await clients.ig.forwardReelAsDM(reel, process.env.INSTAGRAM_FORWARD_TO);
           } else {
@@ -151,7 +163,7 @@ async function pollOnce(clients) {
         if (WA_ENABLED_FOR_SENDING && clients.wa) {
           logger.info('Forwarding Twitter media via WhatsApp', { file: filePath, recipient: process.env.WHATSAPP_FORWARD_TO });
           await clients.wa.sendMediaAsDM(filePath, process.env.WHATSAPP_FORWARD_TO);
-        } else if (IG_ENABLED_FOR_SENDING && clients.ig) {
+        } else if (IG_ENABLED_SEND_MEDIA && clients.ig) {
           logger.info('Forwarding Twitter media via Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
           await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO);
         } else {
@@ -169,7 +181,7 @@ async function pollOnce(clients) {
         if (WA_ENABLED_FOR_SENDING && clients.wa) {
           logger.info('Forwarding TikTok media via WhatsApp', { file: filePath, recipient: process.env.WHATSAPP_FORWARD_TO });
           await clients.wa.sendMediaAsDM(filePath, process.env.WHATSAPP_FORWARD_TO);
-        } else if (IG_ENABLED_FOR_SENDING && clients.ig) {
+        } else if (IG_ENABLED_SEND_MEDIA && clients.ig) {
           logger.info('Forwarding TikTok media via Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
           await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO);
         } else {
@@ -190,7 +202,7 @@ async function pollOnce(clients) {
         if (WA_ENABLED_FOR_SENDING && clients.wa) {
           logger.info('Forwarding RedGif media via WhatsApp', { file: filePath, recipient: process.env.WHATSAPP_FORWARD_TO });
           await clients.wa.sendMediaAsDM(filePath, process.env.WHATSAPP_FORWARD_TO);
-        } else if (IG_ENABLED_FOR_SENDING && clients.ig) {
+        } else if (IG_ENABLED_SEND_MEDIA && clients.ig) {
           logger.info('Forwarding RedGif media via Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
           await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO);
         } else {
