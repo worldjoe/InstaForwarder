@@ -35,7 +35,11 @@ Notes
 
 ## Usage
 
+If you're trying to send anything other than Instagram Reels to an Instagram account then you'll need to manually login to Instagram the first time the application launches "Chrome For Testing". When it launches the browser, just ignore the automation and open instagram.com and login. Then navigate to your DMs to ensure there aren't any popups you need to click through. Then the automation will start working automatically from then on. The browser will stay logged in between sessions/runs. If it even logs out, you just need to login again while it's running.
+
 ### Getting TikTok Cookie
+
+I don't think this cookie part was implemented yet. For now only public videos can be grabbed.
 
 1. Install the browser extension "Cookie-Editor".
 2. Login to TikTok in your browser.
