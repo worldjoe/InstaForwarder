@@ -112,7 +112,7 @@ class TikTokClient {
         }
 
         // Filter out seen videos
-        const targetId = String(t);
+        const targetId = `tiktok:${String(t)}`;
         const seenForTarget = new Set(this.seen[targetId] || []);
         const newFiles = allFiles.filter(f => !seenForTarget.has(f.id));
         
