@@ -358,11 +358,13 @@ class IGClient {
       await this.sleep();
       await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
 
+      logger.debug("Waiting for file input element to appear");
       // Wait for and upload file
       const fileElement = await page.waitForSelector('input[type=file]', { timeout: 10000 });
       
       // Random delay before uploading (simulating human thinking/selecting file)
       await new Promise(resolve => setTimeout(resolve, Math.random() * 1200 + 800));
+      logger.info('Uploading media via puppeteer', { filePath, recipientId });
       await fileElement.uploadFile([path.resolve(filePath)]);
 
       // Wait for upload to process - longer random delay
