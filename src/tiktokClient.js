@@ -5,11 +5,34 @@ const logger = require('./logger');
 
 const DOWNLOADS_DIR = path.resolve(process.cwd(), 'downloads');
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+const SEEN_FILE = path.resolve(process.cwd(), 'tiktok_seen.json');
 
 class TikTokClient {
   constructor() {
     this._checked = false;
     this._ytdlpPath = 'yt-dlp'; // default to PATH
+    this.seen = {};
+    this._loadSeen();
+  }
+
+  _loadSeen() {
+    try {
+      if (fs.existsSync(SEEN_FILE)) {
+        this.seen = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8')) || {};
+      } else {
+        this.seen = {};
+      }
+    } catch (e) {
+      this.seen = {};
+    }
+  }
+
+  _saveSeen() {
+    try {
+      fs.writeFileSync(SEEN_FILE, JSON.stringify(this.seen, null, 2));
+    } catch (e) {
+      logger.error('Failed saving TikTok seen file', { error: e.message || e });
+    }
   }
 
   // verifies yt-dlp is available
@@ -75,11 +98,34 @@ class TikTokClient {
           });
         });
 
-        // Normalize paths and ensure they exist
+        // Normalize paths and collect all downloaded files with their IDs
+        const allFiles = [];
         for (const p of filePaths) {
           const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-            if (fs.existsSync(abs) && fs.statSync(abs).size > 0) results.push(abs);
+          if (fs.existsSync(abs) && fs.statSync(abs).size > 0) {
+            // Extract video ID from filename (format: title-ID.ext)
+            const filename = path.basename(abs);
+            const match = filename.match(/-(\d+)\.\w+$/);
+            const videoId = match ? match[1] : filename;
+            allFiles.push({ path: abs, id: videoId });
+          }
         }
+
+        // Filter out seen videos
+        const targetId = String(t);
+        const seenForTarget = new Set(this.seen[targetId] || []);
+        const newFiles = allFiles.filter(f => !seenForTarget.has(f.id));
+        
+        if (newFiles.length) {
+          this.seen[targetId] = Array.from(new Set([...(this.seen[targetId] || []), ...newFiles.map(f => f.id)]));
+          this._saveSeen();
+        }
+
+        // mark all as "seen" above, even if we limit them to maxMedia below
+        const maxMedia = parseInt(process.env.MAX_TIKTOK_PER_POLL, 10);
+        const filtered = isNaN(maxMedia) ? newFiles : newFiles.slice(0, maxMedia);
+        results.push(...filtered.map(f => f.path));
+
       } catch (e) {
         logger.error('TikTok fetch error', { target: t, error: e.message || e });
       }
