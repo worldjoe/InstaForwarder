@@ -19,6 +19,7 @@ class IGClient {
     this.loggedIn = false;
     this.seen = {};
     this.browser = null;
+    this.page = null;
     this.puppeteerConfig = null;
     this._loadSeen();
   }
@@ -335,28 +336,34 @@ class IGClient {
         await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
       }
 
-      const page = await this.browser.newPage();
-      
-      // Random delay after opening new page
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
+      // Reuse existing page or create new one
+      if (!this.page || this.page.isClosed()) {
+        this.page = await this.browser.newPage();
+        
+        // Random delay after opening new page
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
 
-      // Set viewport
-      await page.setViewport({
-        width: 1200,
-        height: 787,
-        deviceScaleFactor: 1,
-        isMobile: false,
-        hasTouch: false,
-        isLandscape: false
-      });
+        // Set viewport
+        await this.page.setViewport({
+          width: 1200,
+          height: 787,
+          deviceScaleFactor: 1,
+          isMobile: false,
+          hasTouch: false,
+          isLandscape: false
+        });
+      }
+
+      const page = this.page;
 
       // Navigate to DM thread only if not already there
       const dmUrl = `https://www.instagram.com/direct/t/${recipientId}/`;
       const currentUrl = page.url();
+      logger.debug('Current page URL', { currentUrl });
       
       if (!currentUrl.includes(`/direct/t/${recipientId}/`)) {
         logger.debug('Navigating to DM thread', { dmUrl });
-        await page.goto(dmUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(dmUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         
         // Wait for page to load - human-like delay
         await this.sleep();
@@ -388,9 +395,7 @@ class IGClient {
       // Click send button - try multiple selectors
       const sendButtonSelectors = [
         'button[aria-label="Send"]',
-        'div[role="button"][aria-label="Send"]',
-        'div.x1i10hfl:has-text("Send")',
-        '*:has-text("Send")'
+        'div[role="button"][aria-label="Send"]'
       ];
 
       let clicked = false;
@@ -422,6 +427,36 @@ class IGClient {
         }
       }
 
+      // If standard selectors didn't work, try finding by text content
+      if (!clicked) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 600 + 300));
+          
+          // Use page.evaluate to find element by text
+          const sendButton = await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+            const sendBtn = buttons.find(btn => btn.textContent.trim() === 'Send');
+            if (sendBtn) {
+              const rect = sendBtn.getBoundingClientRect();
+              return {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+                found: true
+              };
+            }
+            return { found: false };
+          });
+          
+          if (sendButton.found) {
+            await page.mouse.click(sendButton.x, sendButton.y);
+            clicked = true;
+            logger.debug('Send button clicked via text search');
+          }
+        } catch (e) {
+          logger.warn('Text-based selector also failed', { error: e.message || e });
+        }
+      }
+
       if (!clicked) {
         throw new Error('Could not find Send button');
       }
@@ -429,9 +464,8 @@ class IGClient {
       // Wait for send to complete with random delay
       await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 2000));
       
-      // Random delay before closing page
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 500));
-      await page.close();
+      // Don't close the page - reuse it for next send
+      // await page.close();
 
       logger.info('Video sent successfully via puppeteer', { filePath, recipientId });
       return true;
@@ -443,6 +477,10 @@ class IGClient {
 
   async dispose() {
     // instagram-private-api manages its own connections; nothing to explicitly close
+    if (this.page && !this.page.isClosed()) {
+      await this.page.close();
+      this.page = null;
+    }
     if (this.browser) {
       await this.browser.close();
       this.browser = null;
