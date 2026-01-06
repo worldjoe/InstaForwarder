@@ -350,13 +350,22 @@ class IGClient {
         isLandscape: false
       });
 
-      // Navigate to DM thread
+      // Navigate to DM thread only if not already there
       const dmUrl = `https://www.instagram.com/direct/t/${recipientId}/`;
-      await page.goto(dmUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-
-      // Wait for page to load - human-like delay
-      await this.sleep();
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+      const currentUrl = page.url();
+      
+      if (!currentUrl.includes(`/direct/t/${recipientId}/`)) {
+        logger.debug('Navigating to DM thread', { dmUrl });
+        await page.goto(dmUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        
+        // Wait for page to load - human-like delay
+        await this.sleep();
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+      } else {
+        logger.debug('Already on correct DM thread, skipping navigation');
+        // Small delay to simulate human checking page
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 300));
+      }
 
       logger.debug("Waiting for file input element to appear");
       // Wait for and upload file
