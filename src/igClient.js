@@ -381,15 +381,16 @@ class IGClient {
         'button[aria-label="Send"]',
         'div[role="button"][aria-label="Send"]',
         'div.x1i10hfl:has-text("Send")',
-        'button:has-text("Send")'
+        '*:has-text("Send")'
       ];
 
       let clicked = false;
       for (const selector of sendButtonSelectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 3000 });
           // Small random delay before clicking
           await new Promise(resolve => setTimeout(resolve, Math.random() * 600 + 300));
+
+          await page.waitForSelector(selector, { timeout: 3000 });
           
           // Click at random position within element to avoid bot detection
           const element = await page.$(selector);
@@ -405,6 +406,8 @@ class IGClient {
             }
           }
         } catch (e) {
+          logger.warn('Send button selector not found, trying next', { selector });
+          logger.debug(e.message || e);
           // Try next selector
           continue;
         }
