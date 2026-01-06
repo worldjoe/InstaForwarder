@@ -365,7 +365,9 @@ class IGClient {
       // Random delay before uploading (simulating human thinking/selecting file)
       await new Promise(resolve => setTimeout(resolve, Math.random() * 1200 + 800));
       logger.info('Uploading media via puppeteer', { filePath, recipientId });
-      await fileElement.uploadFile([path.resolve(filePath)]);
+      const resolvedPath = path.resolve(filePath);
+      logger.debug('Resolved file path for upload', { resolvedPath });
+      await fileElement.uploadFile(resolvedPath);
 
       // Wait for upload to process - longer random delay
       await this.sleep();
