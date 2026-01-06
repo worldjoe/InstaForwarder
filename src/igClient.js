@@ -220,10 +220,17 @@ class IGClient {
   // ...existing code...
   async _resolveUserId(identifier) {
     if (/^\d+$/.test(String(identifier))) return Number(identifier);
+    
+    // Check if we have a logged in session (required for API calls)
+    if (!this.loggedIn) {
+      throw new Error('Instagram API session required to resolve user IDs. Enable ENABLE_IG_FORWARD_REELS or ENABLE_IG to establish a session.');
+    }
+    
     try {
       await this.sleep();
       return await this.ig.user.getIdByUsername(identifier);
     } catch (e) {
+
       // fallback: attempt search
       await this.sleep();
       const results = await this.ig.user.search(identifier);
