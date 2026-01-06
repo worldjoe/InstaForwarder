@@ -19,6 +19,7 @@ class IGClient {
     this.loggedIn = false;
     this.seen = {};
     this.browser = null;
+    this.puppeteerConfig = null;
     this._loadSeen();
   }
 
@@ -319,11 +320,17 @@ class IGClient {
   async _sendVideoViaPuppeteer(filePath, recipientId) {
     try {
       if (!this.browser) {
-        this.browser = await puppeteer.launch({
+        // Setup puppeteer config similar to whatsappClient.js
+        const executablePath = process.env.CHROME_EXECUTABLE_PATH;
+        const userDataDir = path.resolve(process.cwd(), '.wwebjs_cache');
+        
+        this.puppeteerConfig = {
           headless: false,
-          executablePath: process.env.CHROME_PATH || undefined,
-          userDataDir: process.env.CHROME_USER_DATA || undefined
-        });
+          userDataDir,
+          ...(executablePath ? { executablePath } : {}),
+        };
+        
+        this.browser = await puppeteer.launch(this.puppeteerConfig);
         // Small delay after browser launch
         await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
       }
