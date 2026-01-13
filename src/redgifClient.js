@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const logger = require('./logger');
 const redgifApi = require('./redgifApi');
 
@@ -55,7 +56,7 @@ class RedGifClient {
     
     for (const username of targets) {
       try {
-        const trimmedUsername = String(username || '').trim().replace(/^@+/, '');
+        const trimmedUsername = String(username || '').trim().replace(/^@+/, '').toLowerCase();
         if (!trimmedUsername) continue;
 
         // Small delay to avoid bursts
@@ -94,6 +95,7 @@ class RedGifClient {
             if (!this.seen[seenKey] || !this.seen[seenKey].includes(gifId)) {
               if (stats.isFile()) {
                 results.push(filePath);
+                filePath = await this._reencodeMedia(filePath);
                 
                 // Mark as seen immediately after adding to results
                 if (!this.seen[seenKey]) {
@@ -113,6 +115,64 @@ class RedGifClient {
     }
     return results;
     }
+
+  // Re-encode media to optimize for web streaming and optionally remove audio
+  async _reencodeMedia(filePath) {
+    try {
+      const dir = path.dirname(filePath);
+      const nameWithoutExt = path.basename(filePath, path.extname(filePath));
+      const outputFile = path.join(dir, `${nameWithoutExt}_optimized.mp4`);
+      
+      // Check if REDGIFS_AUDIO is disabled (false/0)
+      const removeAudio = process.env.REDGIFS_AUDIO === '0' || 
+                          process.env.REDGIFS_AUDIO === 'false' ||
+                          process.env.REDGIFS_AUDIO === 'False' ||
+                          process.env.REDGIFS_AUDIO === 'FALSE';
+      
+      // Build ffmpeg command with web streaming optimizations
+      // -movflags +faststart: Move metadata to beginning for faster web playback
+      // -c:v libx264: Use H.264 codec for wide compatibility
+      // -preset fast: Balance encoding speed vs file size
+      // -crf 23: Constant quality (18-28 range, 23 is default)
+      const audioOption = removeAudio ? '-an' : '-c:a aac -b:a 128k';
+      
+      const ffmpegCommand = `ffmpeg -i "${filePath}" -c:v libx264 -preset fast -crf 23 ${audioOption} -movflags +faststart "${outputFile}"`;
+      
+      logger.debug('Re-encoding video for web streaming', { 
+        file: path.basename(filePath), 
+        removeAudio,
+        command: ffmpegCommand 
+      });
+      
+      execSync(ffmpegCommand, {
+        cwd: process.cwd(),
+        encoding: 'utf8'
+      });
+      
+      if (fs.existsSync(outputFile)) {
+        // Check file sizes
+        const originalSize = fs.statSync(filePath).size / (1024 * 1024);
+        const newSize = fs.statSync(outputFile).size / (1024 * 1024);
+        
+        logger.debug('Re-encode complete', { 
+          originalSizeMB: originalSize.toFixed(2), 
+          newSizeMB: newSize.toFixed(2) 
+        });
+        
+        // Replace original with optimized version
+        fs.unlinkSync(filePath);
+        fs.renameSync(outputFile, filePath);
+        
+        return filePath;
+      } else {
+        logger.warn('Re-encoded file not found, using original');
+        return filePath;
+      }
+    } catch (err) {
+      logger.warn('Re-encoding failed', { error: err.message || err });
+      return filePath;
+    }
+  }
 }
 
 module.exports = RedGifClient;
