@@ -94,8 +94,9 @@ class RedGifClient {
             const seenKey = `redgif:${trimmedUsername}`;
             if (!this.seen[seenKey] || !this.seen[seenKey].includes(gifId)) {
               if (stats.isFile()) {
+                // Re-encode media for optimization before adding to results
+                await this._reencodeMedia(filePath);
                 results.push(filePath);
-                filePath = await this._reencodeMedia(filePath);
                 
                 // Mark as seen immediately after adding to results
                 if (!this.seen[seenKey]) {
