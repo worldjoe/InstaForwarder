@@ -7,7 +7,7 @@ const TikTokClient = require('./tiktokClient');
 const RedGifClient = require('./redgifClient');
 const WhatsAppClient = require('./whatsappClient');
 
-
+// Poll interval in milliseconds (default: 60 seconds)
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || '60', 10) * 1000;
 const TARGETS = (process.env.INSTAGRAM_TARGET_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 const TWITTER_TARGETS = (process.env.TWITTER_TARGETS || '').split(',').map(s => s.trim()).filter(Boolean);

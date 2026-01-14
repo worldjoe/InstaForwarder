@@ -14,58 +14,91 @@ const fs = require('fs').promises;
 const path = require('path');
 
 let cookies;
+let token;
 
 const apiUrl = "https://api.redgifs.com";
 
-async function accessToken() {
+async function accessToken(forceRefresh = false) {
+  // Return cached token if available and not forcing refresh
+  if (token && !forceRefresh) {
+    return token;
+  }
+  
   try {
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
     const response = await fetch(apiUrl + "/v2/auth/temporary");
     const data = await response.json();
     cookies = response.headers.get("set-cookie");
-    return data.token;
+    token = data.token;
+    return token;
   } catch (error) {
     throw new Error("Error getting token.");
   }
 }
 
 async function getGif(gifId, quality = 'hd') {
+  const attemptFetch = async (useNewToken = false) => {
+    try {
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+      const response = await fetch(apiUrl + `/v2/gifs/${gifId}`, {
+        headers: {
+          Authorization: `Bearer ${await accessToken(useNewToken)}`,
+          Cookie: cookies,
+        },
+      });
+      const data = await response.json();
+      
+      // Check for authentication errors
+      if (data?.error && (response.status === 401 || response.status === 403)) {
+        throw { authError: true, message: data.error.description };
+      }
+      
+      let downloadUrl;
+
+      if (data?.error) {
+        throw new Error(`${data.error.description}`);
+      } else if (quality === 'hd' && data.gif?.urls?.hd) {
+        downloadUrl = data.gif.urls.hd;
+      } else if (quality === 'sd' && data.gif?.urls?.sd) {
+        downloadUrl = data.gif.urls.sd;
+      } else if (data.gif?.urls?.hd) {
+        downloadUrl = data.gif.urls.hd;
+      } else if (data.gif?.urls?.sd) {
+        downloadUrl = data.gif.urls.sd;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+      const video = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${await accessToken()}`,
+          Cookie: cookies,
+        },
+      });
+      
+      // Check for authentication errors on video download
+      if (!video.ok && (video.status === 401 || video.status === 403)) {
+        throw { authError: true, message: "Authentication failed on video download" };
+      }
+
+      if (video.ok) {
+        const buffer = Buffer.from(await video.arrayBuffer());
+        return buffer;
+      } else {
+        throw new Error("Error downloading gif.");
+      }
+    } catch (error) {
+      if (error.authError && !useNewToken) {
+        // Retry once with a fresh token
+        return attemptFetch(true);
+      }
+      throw error;
+    }
+  };
+  
   try {
-    const response = await fetch(apiUrl + `/v2/gifs/${gifId}`, {
-      headers: {
-        Authorization: `Bearer ${await accessToken()}`,
-        Cookie: cookies,
-      },
-    });
-    const data = await response.json();
-    let downloadUrl;
-
-    if (data?.error) {
-      throw new Error(`${data.error.description}`);
-    } else if (quality === 'hd' && data.gif?.urls?.hd) {
-      downloadUrl = data.gif.urls.hd;
-    } else if (quality === 'sd' && data.gif?.urls?.sd) {
-      downloadUrl = data.gif.urls.sd;
-    } else if (data.gif?.urls?.hd) {
-      downloadUrl = data.gif.urls.hd;
-    } else if (data.gif?.urls?.sd) {
-      downloadUrl = data.gif.urls.sd;
-    }
-
-    const video = await fetch(downloadUrl, {
-      headers: {
-        Authorization: `Bearer ${await accessToken()}`,
-        Cookie: cookies,
-      },
-    });
-
-    if (video.ok) {
-      const buffer = Buffer.from(await video.arrayBuffer());
-      return buffer;
-    } else {
-      throw new Error("Error downloading gif.");
-    }
+    return await attemptFetch();
   } catch (error) {
-    throw new Error(`Error getting gif:\n${error}`);
+    throw new Error(`Error getting gif:\n${error.message || error}`);
   }
 }
 
@@ -73,33 +106,51 @@ async function searchCreator(
   username,
   { page = 1, count = 80, order = "recent", type = "g" } = {}
 ) {
-  try {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      count: count.toString(),
-      order: order,
-      type: type,
-    });
+  const attemptFetch = async (useNewToken = false) => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        count: count.toString(),
+        order: order,
+        type: type,
+      });
 
-    const response = await fetch(
-      `${apiUrl}/v2/users/${username}/search?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${await accessToken()}`,
-          Cookie: cookies,
-        },
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 1000));
+      const response = await fetch(
+        `${apiUrl}/v2/users/${username}/search?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${await accessToken(useNewToken)}`,
+            Cookie: cookies,
+          },
+        }
+      );
+
+      const data = await response.json();
+      
+      // Check for authentication errors
+      if (data?.error && (response.status === 401 || response.status === 403)) {
+        throw { authError: true, message: data.error.description };
       }
-    );
 
-    const data = await response.json();
+      if (data?.error) {
+        throw new Error(`${data.error.description}`);
+      }
 
-    if (data?.error) {
-      throw new Error(`${data.error.description}`);
+      return data;
+    } catch (error) {
+      if (error.authError && !useNewToken) {
+        // Retry once with a fresh token
+        return attemptFetch(true);
+      }
+      throw error;
     }
-
-    return data;
+  };
+  
+  try {
+    return await attemptFetch();
   } catch (error) {
-    throw new Error(`Error searching creator:\n${error}`);
+    throw new Error(`Error searching creator:\n${error.message || error}`);
   }
 }
 
