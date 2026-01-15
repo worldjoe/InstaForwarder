@@ -59,8 +59,8 @@ class RedGifClient {
         const trimmedUsername = String(username || '').trim().replace(/^@+/, '').toLowerCase();
         if (!trimmedUsername) continue;
 
-        // Small delay to avoid bursts
-        await new Promise(r => setTimeout(r, 500));
+        // 10 minute delay to avoid bursts
+        await new Promise(r => setTimeout(r, 600000));
 
         const userFolder = path.resolve(DOWNLOADS_DIR, trimmedUsername);
         if (!fs.existsSync(userFolder)) {
