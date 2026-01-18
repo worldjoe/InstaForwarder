@@ -113,6 +113,8 @@ class IGClient {
         hasTouch: false,
         isLandscape: false
       });
+    } else {
+      logger.debug('Puppeteer browser already initialized, reusing existing instance');
     }
 
     // optional proxy from env
