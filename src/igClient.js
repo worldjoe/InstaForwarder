@@ -51,32 +51,6 @@ class IGClient {
 
   // ...existing code...
   async init(retries = 3, userDataDir = null) {
-    const user = process.env.INSTAGRAM_USERNAME;
-    const pass = process.env.INSTAGRAM_PASSWORD;
-    if (!user || !pass) throw new Error('Missing INSTAGRAM_USERNAME or INSTAGRAM_PASSWORD');
-
-    // Check if all device config values are present
-    const hasFullDeviceConfig = 
-      process.env.IG_DEVICE_STRING && 
-      process.env.IG_DEVICE_ID && 
-      process.env.IG_UUID && 
-      process.env.IG_PHONE_ID && 
-      process.env.IG_ADID && 
-      process.env.IG_BUILD;
-
-    if (hasFullDeviceConfig) {
-      // Use device configuration from env
-      this.ig.state.deviceString = process.env.IG_DEVICE_STRING;
-      this.ig.state.deviceId = process.env.IG_DEVICE_ID;
-      this.ig.state.uuid = process.env.IG_UUID;
-      this.ig.state.phoneId = process.env.IG_PHONE_ID;
-      this.ig.state.adid = process.env.IG_ADID;
-      this.ig.state.build = process.env.IG_BUILD;
-    } else {
-      // Generate new device
-      this.ig.state.generateDevice(user);
-    }
-    
     // Store userDataDir for later use in puppeteer
     if (userDataDir) {
       this.userDataDir = userDataDir;
@@ -115,6 +89,43 @@ class IGClient {
       });
     } else {
       logger.debug('Puppeteer browser already initialized, reusing existing instance');
+    }
+
+    // Check if Instagram API login is needed
+    const igForwardReelsEnabled = this._envEnabled('ENABLE_IG_FORWARD_REELS');
+    const needsApiLogin = igForwardReelsEnabled;
+    
+    logger.debug('Instagram init - checking if API login needed', { needsApiLogin, igForwardReelsEnabled });
+
+    if (!needsApiLogin) {
+      logger.info('Instagram API login skipped (ENABLE_IG_FORWARD_REELS is disabled)');
+      return;
+    }
+
+    const user = process.env.INSTAGRAM_USERNAME;
+    const pass = process.env.INSTAGRAM_PASSWORD;
+    if (!user || !pass) throw new Error('Missing INSTAGRAM_USERNAME or INSTAGRAM_PASSWORD');
+
+    // Check if all device config values are present
+    const hasFullDeviceConfig = 
+      process.env.IG_DEVICE_STRING && 
+      process.env.IG_DEVICE_ID && 
+      process.env.IG_UUID && 
+      process.env.IG_PHONE_ID && 
+      process.env.IG_ADID && 
+      process.env.IG_BUILD;
+
+    if (hasFullDeviceConfig) {
+      // Use device configuration from env
+      this.ig.state.deviceString = process.env.IG_DEVICE_STRING;
+      this.ig.state.deviceId = process.env.IG_DEVICE_ID;
+      this.ig.state.uuid = process.env.IG_UUID;
+      this.ig.state.phoneId = process.env.IG_PHONE_ID;
+      this.ig.state.adid = process.env.IG_ADID;
+      this.ig.state.build = process.env.IG_BUILD;
+    } else {
+      // Generate new device
+      this.ig.state.generateDevice(user);
     }
 
     // optional proxy from env
@@ -260,6 +271,13 @@ class IGClient {
       throw new Error('Instagram login failed: ' + (err.message || err));
     }
   }
+
+  _envEnabled(name) {
+    const v = process.env[name];
+    if (v === undefined) return true; // default enabled
+    return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
+  }
+
   // ...existing code...
   async _resolveUserId(identifier) {
     if (/^\d+$/.test(String(identifier))) return Number(identifier);

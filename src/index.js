@@ -69,17 +69,17 @@ async function main() {
   }
 
   const clients = {};
-  // Initialize IG client only when forward reels is enabled (needs API login)
-  if (IG_ENABLED_FORWARD_REELS || IG_ENABLED) clients.ig = new IGClient({ headless: true });
-  // For send media, we only need puppeteer (initialized on demand)
-  if (IG_ENABLED_SEND_MEDIA && !clients.ig) clients.ig = new IGClient({ headless: true });
+  // Initialize IG client when any IG feature is enabled
+  if (IG_ENABLED_FORWARD_REELS || IG_ENABLED || IG_ENABLED_SEND_MEDIA) {
+    clients.ig = new IGClient({ headless: true });
+  }
   // Secondary IG client for second account
   if (IG_ENABLED_SEND_MEDIA_2) clients.ig2 = new IGClient({ headless: true });
   if (TWITTER_ENABLED) clients.twitter = new TwitterClient();
   if (WA_ENABLED_FOR_SENDING) clients.wa = new WhatsAppClient({ headless: true });
 
-  // Only init (API login) when forward reels is enabled
-  if (IG_ENABLED_FORWARD_REELS || IG_ENABLED) {
+  // Initialize primary IG client (API login only if ENABLE_IG_FORWARD_REELS or ENABLE_IG is enabled)
+  if (clients.ig) {
     try {
       const igUserDataDir = path.resolve(process.cwd(), '.wwebjs_cache');
       await clients.ig.init(3, igUserDataDir);
@@ -89,11 +89,10 @@ async function main() {
     }
   }
 
-  // Initialize secondary IG client (no API login needed, just puppeteer)
+  // Initialize secondary IG client (puppeteer only, no API login)
   if (IG_ENABLED_SEND_MEDIA_2) {
     try {
       const ig2UserDataDir = path.resolve(process.cwd(), '.ig_cache_2');
-      // Pass empty retries and userDataDir (no login needed for send-only)
       await clients.ig2.init(3, ig2UserDataDir);
     } catch (err) {
       logger.error('Failed to init secondary Instagram client', { error: err.message || err });
