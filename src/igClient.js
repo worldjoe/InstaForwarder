@@ -77,6 +77,44 @@ class IGClient {
       this.ig.state.generateDevice(user);
     }
     
+    // Store userDataDir for later use in puppeteer
+    if (userDataDir) {
+      this.userDataDir = userDataDir;
+    }
+    
+    // Initialize browser for puppeteer operations
+    if (!this.browser) {
+      logger.debug('Initializing puppeteer browser');
+      const executablePath = process.env.CHROME_EXECUTABLE_PATH;
+      const dataDir = this.userDataDir || path.resolve(process.cwd(), '.wwebjs_cache');
+      
+      this.puppeteerConfig = {
+        headless: false,
+        userDataDir: dataDir,
+        ...(executablePath ? { executablePath } : {}),
+      };
+      
+      this.browser = await puppeteer.launch(this.puppeteerConfig);
+      // Small delay after browser launch
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+      
+      // Initialize page
+      this.page = await this.browser.newPage();
+      
+      // Random delay after opening new page
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
+
+      // Set viewport
+      await this.page.setViewport({
+        width: 1200,
+        height: 787,
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        isLandscape: false
+      });
+    }
+
     // optional proxy from env
     if (process.env.IG_PROXY) this.ig.state.proxyUrl = process.env.IG_PROXY;
 
@@ -142,6 +180,7 @@ class IGClient {
       }
 
     try {
+
       await this.ig.simulate.preLoginFlow();
       // No usable cached session, perform login
       await this.ig.account.login(user, pass);
@@ -217,44 +256,6 @@ class IGClient {
 
       // Fallback: rethrow original error
       throw new Error('Instagram login failed: ' + (err.message || err));
-    } finally {
-      // Store userDataDir for later use in puppeteer
-      if (userDataDir) {
-        this.userDataDir = userDataDir;
-      }
-      
-      // Initialize browser for puppeteer operations
-      if (!this.browser) {
-        logger.debug('Initializing puppeteer browser');
-        const executablePath = process.env.CHROME_EXECUTABLE_PATH;
-        const dataDir = this.userDataDir || path.resolve(process.cwd(), '.wwebjs_cache');
-        
-        this.puppeteerConfig = {
-          headless: false,
-          userDataDir: dataDir,
-          ...(executablePath ? { executablePath } : {}),
-        };
-        
-        this.browser = await puppeteer.launch(this.puppeteerConfig);
-        // Small delay after browser launch
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
-        
-        // Initialize page
-        this.page = await this.browser.newPage();
-        
-        // Random delay after opening new page
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
-
-        // Set viewport
-        await this.page.setViewport({
-          width: 1200,
-          height: 787,
-          deviceScaleFactor: 1,
-          isMobile: false,
-          hasTouch: false,
-          isLandscape: false
-        });
-      }
     }
   }
   // ...existing code...
