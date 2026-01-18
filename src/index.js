@@ -14,6 +14,12 @@ const TWITTER_TARGETS = (process.env.TWITTER_TARGETS || '').split(',').map(s => 
 const TIKTOK_TARGETS = (process.env.TIKTOK_TARGETS || '').split(',').map(s => s.trim()).filter(Boolean);
 const REDGIF_TARGETS = (process.env.REDGIF_TARGETS || '').split(',').map(s => s.trim()).filter(Boolean);
 
+// Secondary targets for second IG client
+const TARGETS_2 = (process.env.INSTAGRAM_TARGET_IDS_2 || '').split(',').map(s => s.trim()).filter(Boolean);
+const TWITTER_TARGETS_2 = (process.env.TWITTER_TARGETS_2 || '').split(',').map(s => s.trim()).filter(Boolean);
+const TIKTOK_TARGETS_2 = (process.env.TIKTOK_TARGETS_2 || '').split(',').map(s => s.trim()).filter(Boolean);
+const REDGIF_TARGETS_2 = (process.env.REDGIF_TARGETS_2 || '').split(',').map(s => s.trim()).filter(Boolean);
+
 function envEnabled(name) {
   const v = process.env[name];
   if (v === undefined) return true; // default enabled
@@ -23,6 +29,7 @@ function envEnabled(name) {
 const IG_ENABLED = envEnabled('ENABLE_IG');
 const IG_ENABLED_FORWARD_REELS = envEnabled('ENABLE_IG_FORWARD_REELS');
 const IG_ENABLED_SEND_MEDIA = envEnabled('ENABLE_IG_SEND_MEDIA');
+const IG_ENABLED_SEND_MEDIA_2 = envEnabled('ENABLE_IG_SEND_MEDIA_2');
 const WA_ENABLED_FOR_SENDING = envEnabled('WA_ENABLED_FOR_SENDING');
 const TWITTER_ENABLED = envEnabled('ENABLE_TWITTER');
 const TIKTOK_ENABLED = envEnabled('ENABLE_TIKTOK');
@@ -49,9 +56,9 @@ async function main() {
   }
 
   // If sending media via IG is enabled we must have a forward target.
-  if (IG_ENABLED_SEND_MEDIA) {
+  if (IG_ENABLED_SEND_MEDIA || IG_ENABLED_SEND_MEDIA_2) {
     if (!process.env.INSTAGRAM_FORWARD_TO) {
-      logger.error('Please set INSTAGRAM_FORWARD_TO in your .env when ENABLE_IG_SEND_MEDIA is true');
+      logger.error('Please set INSTAGRAM_FORWARD_TO in your .env when ENABLE_IG_SEND_MEDIA or ENABLE_IG_SEND_MEDIA_2 is true');
       process.exit(1);
     }
   }
@@ -66,15 +73,30 @@ async function main() {
   if (IG_ENABLED_FORWARD_REELS || IG_ENABLED) clients.ig = new IGClient({ headless: true });
   // For send media, we only need puppeteer (initialized on demand)
   if (IG_ENABLED_SEND_MEDIA && !clients.ig) clients.ig = new IGClient({ headless: true });
+  // Secondary IG client for second account
+  if (IG_ENABLED_SEND_MEDIA_2) clients.ig2 = new IGClient({ headless: true });
   if (TWITTER_ENABLED) clients.twitter = new TwitterClient();
   if (WA_ENABLED_FOR_SENDING) clients.wa = new WhatsAppClient({ headless: true });
 
   // Only init (API login) when forward reels is enabled
   if (IG_ENABLED_FORWARD_REELS || IG_ENABLED) {
     try {
-      await clients.ig.init();
+      const igUserDataDir = path.resolve(process.cwd(), '.wwebjs_cache');
+      await clients.ig.init(3, igUserDataDir);
     } catch (err) {
       logger.error('Failed to init Instagram client', { error: err.message || err });
+      process.exit(1);
+    }
+  }
+
+  // Initialize secondary IG client (no API login needed, just puppeteer)
+  if (IG_ENABLED_SEND_MEDIA_2) {
+    try {
+      const ig2UserDataDir = path.resolve(process.cwd(), '.ig_cache_2');
+      // Pass empty retries and userDataDir (no login needed for send-only)
+      await clients.ig2.init(3, ig2UserDataDir);
+    } catch (err) {
+      logger.error('Failed to init secondary Instagram client', { error: err.message || err });
       process.exit(1);
     }
   }
@@ -213,6 +235,68 @@ async function pollOnce(clients) {
       logger.error('Error polling RedGif targets', { error: e.message || e });
     }
     logger.info('Finished polling RedGif');
+  }
+
+  // Secondary client polling for Twitter targets 2
+  if (TWITTER_ENABLED && IG_ENABLED_SEND_MEDIA_2 && TWITTER_TARGETS_2.length) {
+    logger.info('Fetching media from secondary Twitter users');
+    try {
+      const mediaFiles = await clients.twitter.fetchMediaFromTargets(TWITTER_TARGETS_2);
+      for (const filePath of mediaFiles) {
+        logger.info('Forwarding Twitter media via secondary Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
+        await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO);
+      }
+    } catch (e) {
+      logger.error('Error polling secondary Twitter targets', { error: e.message || e });
+    }
+    logger.info('Finished polling secondary Twitter');
+  }
+
+  // Secondary client polling for TikTok targets 2
+  if (TIKTOK_ENABLED && IG_ENABLED_SEND_MEDIA_2 && TIKTOK_TARGETS_2.length) {
+    logger.info('Fetching media from secondary TikTok targets');
+    try {
+      const mediaFiles = await clients.tiktok.fetchMediaFromTargets(TIKTOK_TARGETS_2);
+      for (const filePath of mediaFiles) {
+        logger.info('Forwarding TikTok media via secondary Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
+        await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO);
+      }
+    } catch (e) {
+      logger.error('Error polling secondary TikTok targets', { error: e.message || e });
+    }
+    logger.info('Finished polling secondary TikTok');
+  }
+
+  // Secondary client polling for RedGif targets 2
+  if (REDGIF_ENABLED && IG_ENABLED_SEND_MEDIA_2 && REDGIF_TARGETS_2.length) {
+    logger.info('Fetching media from secondary RedGif targets');
+    try {
+      const mediaFiles = await clients.redgif.fetchMediaFromTargets(REDGIF_TARGETS_2);
+      for (const filePath of mediaFiles) {
+        logger.info('Forwarding RedGif media via secondary Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
+        await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO);
+      }
+    } catch (e) {
+      logger.error('Error polling secondary RedGif targets', { error: e.message || e });
+    }
+    logger.info('Finished polling secondary RedGif');
+  }
+
+  // Secondary client polling for Instagram targets 2
+  if (IG_ENABLED && IG_ENABLED_SEND_MEDIA_2 && TARGETS_2.length && clients.ig) {
+    logger.info('Polling for new reels from secondary targets', { targets: TARGETS_2 });
+    try {
+      for (const target of TARGETS_2) {
+        const newReels = await clients.ig.fetchNewReelsForUser(target);
+        for (const reel of newReels) {
+          logger.info('Forwarding reel via secondary Instagram', { url: reel.url, recipient: process.env.INSTAGRAM_FORWARD_TO });
+          await clients.ig2.sendMediaAsDM(reel.url, process.env.INSTAGRAM_FORWARD_TO);
+        }
+      }
+    } catch (e) {
+      logger.error('Error polling secondary Instagram targets', { error: e.message || e });
+    }
+    logger.info('Finished polling secondary Instagram');
   }
 }
 

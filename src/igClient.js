@@ -50,7 +50,7 @@ class IGClient {
   }
 
   // ...existing code...
-  async init(retries = 3) {
+  async init(retries = 3, userDataDir = null) {
     const user = process.env.INSTAGRAM_USERNAME;
     const pass = process.env.INSTAGRAM_PASSWORD;
     if (!user || !pass) throw new Error('Missing INSTAGRAM_USERNAME or INSTAGRAM_PASSWORD');
@@ -217,6 +217,11 @@ class IGClient {
 
       // Fallback: rethrow original error
       throw new Error('Instagram login failed: ' + (err.message || err));
+    } finally {
+      // Store userDataDir for later use in puppeteer
+      if (userDataDir) {
+        this.userDataDir = userDataDir;
+      }
     }
   }
   // ...existing code...
@@ -323,11 +328,11 @@ class IGClient {
       if (!this.browser) {
         // Setup puppeteer config similar to whatsappClient.js
         const executablePath = process.env.CHROME_EXECUTABLE_PATH;
-        const userDataDir = path.resolve(process.cwd(), '.wwebjs_cache');
+        const dataDir = this.userDataDir || path.resolve(process.cwd(), '.wwebjs_cache');
         
         this.puppeteerConfig = {
           headless: false,
-          userDataDir,
+          userDataDir: dataDir,
           ...(executablePath ? { executablePath } : {}),
         };
         
