@@ -237,6 +237,22 @@ class IGClient {
         this.browser = await puppeteer.launch(this.puppeteerConfig);
         // Small delay after browser launch
         await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+        
+        // Initialize page
+        this.page = await this.browser.newPage();
+        
+        // Random delay after opening new page
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
+
+        // Set viewport
+        await this.page.setViewport({
+          width: 1200,
+          height: 787,
+          deviceScaleFactor: 1,
+          isMobile: false,
+          hasTouch: false,
+          isLandscape: false
+        });
       }
     }
   }
@@ -341,27 +357,9 @@ class IGClient {
   // Send video using puppeteer (workaround for broken broadcastVideo API)
   async _sendVideoViaPuppeteer(filePath, recipientId) {
     try {
-      // Browser should already be initialized in init()
-      if (!this.browser) {
-        throw new Error('Browser not initialized. Call init() first.');
-      }
-
-      // Reuse existing page or create new one
-      if (!this.page || this.page.isClosed()) {
-        this.page = await this.browser.newPage();
-        
-        // Random delay after opening new page
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
-
-        // Set viewport
-        await this.page.setViewport({
-          width: 1200,
-          height: 787,
-          deviceScaleFactor: 1,
-          isMobile: false,
-          hasTouch: false,
-          isLandscape: false
-        });
+      // Browser and page should already be initialized in init()
+      if (!this.browser || !this.page) {
+        throw new Error('Browser/page not initialized. Call init() first.');
       }
 
       const page = this.page;
