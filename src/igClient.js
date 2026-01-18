@@ -222,6 +222,22 @@ class IGClient {
       if (userDataDir) {
         this.userDataDir = userDataDir;
       }
+      
+      // Initialize browser for puppeteer operations
+      if (!this.browser) {
+        const executablePath = process.env.CHROME_EXECUTABLE_PATH;
+        const dataDir = this.userDataDir || path.resolve(process.cwd(), '.wwebjs_cache');
+        
+        this.puppeteerConfig = {
+          headless: false,
+          userDataDir: dataDir,
+          ...(executablePath ? { executablePath } : {}),
+        };
+        
+        this.browser = await puppeteer.launch(this.puppeteerConfig);
+        // Small delay after browser launch
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+      }
     }
   }
   // ...existing code...
@@ -325,20 +341,9 @@ class IGClient {
   // Send video using puppeteer (workaround for broken broadcastVideo API)
   async _sendVideoViaPuppeteer(filePath, recipientId) {
     try {
+      // Browser should already be initialized in init()
       if (!this.browser) {
-        // Setup puppeteer config similar to whatsappClient.js
-        const executablePath = process.env.CHROME_EXECUTABLE_PATH;
-        const dataDir = this.userDataDir || path.resolve(process.cwd(), '.wwebjs_cache');
-        
-        this.puppeteerConfig = {
-          headless: false,
-          userDataDir: dataDir,
-          ...(executablePath ? { executablePath } : {}),
-        };
-        
-        this.browser = await puppeteer.launch(this.puppeteerConfig);
-        // Small delay after browser launch
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+        throw new Error('Browser not initialized. Call init() first.');
       }
 
       // Reuse existing page or create new one
