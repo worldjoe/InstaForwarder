@@ -225,6 +225,7 @@ class IGClient {
       
       // Initialize browser for puppeteer operations
       if (!this.browser) {
+        logger.debug('Initializing puppeteer browser');
         const executablePath = process.env.CHROME_EXECUTABLE_PATH;
         const dataDir = this.userDataDir || path.resolve(process.cwd(), '.wwebjs_cache');
         
