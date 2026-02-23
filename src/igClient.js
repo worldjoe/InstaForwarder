@@ -359,7 +359,7 @@ class IGClient {
   }
 
   // Send a media file (image or video) as a DM to given username
-  async sendMediaAsDM(filePath, toUsername) {
+  async sendMediaAsDM(filePath, toUsername, fromTarget = null) {
     if (!fs.existsSync(filePath)) throw new Error('File not found: ' + filePath);
     const recipientId = await this._resolveUserId(toUsername);
     try {
@@ -369,15 +369,15 @@ class IGClient {
       // just going to to use puppeteer for both video and image for consistency
       // await thread.broadcastVideo({ video: fileBuffer });
       // Using puppeteer replay as workaround
-      return await this._sendVideoViaPuppeteer(filePath, recipientId);
+      return await this._sendVideoViaPuppeteer(filePath, recipientId, fromTarget);
     } catch (e) {
-      logger.error('Failed to send media as DM', { error: e.message || e });
+      logger.error('Failed to send media as DM', { error: e.message || e, fromTarget });
       return false;
     }
   }
 
   // Send video using puppeteer (workaround for broken broadcastVideo API)
-  async _sendVideoViaPuppeteer(filePath, recipientId) {
+  async _sendVideoViaPuppeteer(filePath, recipientId, fromTarget = null) {
     try {
       // Browser and page should already be initialized in init()
       if (!this.browser || !this.page) {
@@ -402,6 +402,36 @@ class IGClient {
         logger.debug('Already on correct DM thread, skipping navigation');
         // Small delay to simulate human checking page
         await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 300));
+      }
+
+      // Type the target name in the message field if provided
+      if (fromTarget) {
+        try {
+          logger.debug('Typing target name into message field', { fromTarget });
+          
+          // Wait for message field to be available
+          const messageField = await page.waitForSelector('div[aria-label="Message"][contenteditable="true"]', { timeout: 5000 });
+          
+          // Random delay before typing (simulating human thinking)
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 800 + 400));
+          
+          // Click on the message field to focus it
+          await messageField.click();
+          
+          // Small delay after click
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 300 + 200));
+          
+          // Type the target name
+          await page.keyboard.type(fromTarget, { delay: Math.random() * 50 + 50 }); // Random typing speed
+          
+          // Random delay after typing
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 300));
+          
+          logger.debug('Successfully typed target name', { fromTarget });
+        } catch (e) {
+          logger.warn('Failed to type target name in message field', { error: e.message || e, fromTarget });
+          // Continue anyway - this is not critical
+        }
       }
 
       logger.debug("Waiting for file input element to appear");
