@@ -141,16 +141,27 @@ async function main() {
     }
   }
 
-  // initial poll
-  await pollOnce(clients);
+  let isPolling = false;
+  const runPollOnceSafely = async () => {
+    if (isPolling) {
+      logger.warn('Skipping poll tick because previous poll is still running');
+      return;
+    }
 
-  setInterval(async () => {
+    isPolling = true;
     try {
       await pollOnce(clients);
     } catch (err) {
       logger.error('Poll error', { error: err.message || err, stack: err.stack });
+    } finally {
+      isPolling = false;
     }
-  }, POLL_INTERVAL);
+  };
+
+  // initial poll
+  await runPollOnceSafely();
+
+  setInterval(runPollOnceSafely, POLL_INTERVAL);
 }
 
 async function pollOnce(clients) {
