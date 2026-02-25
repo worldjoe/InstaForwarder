@@ -51,7 +51,7 @@ class RedGifClient {
 
   // Download gifs from creator usernames
   // Returns array of downloaded file paths (may be empty).
-  async fetchMediaFromTargets(targets = []) {
+  async fetchMediaFromTargets(targets = [], fromTarget) {
     const results = [];
     
     for (const username of targets) {
@@ -59,8 +59,8 @@ class RedGifClient {
         const trimmedUsername = String(username || '').trim().replace(/^@+/, '').toLowerCase();
         if (!trimmedUsername) continue;
 
-        // 10 minute delay to avoid bursts
-        await new Promise(r => setTimeout(r, 600000));
+        // 5 minute delay to avoid bursts
+        await new Promise(r => setTimeout(r, 300000));
 
         const userFolder = path.resolve(DOWNLOADS_DIR, trimmedUsername);
         if (!fs.existsSync(userFolder)) {
@@ -96,7 +96,7 @@ class RedGifClient {
               if (stats.isFile()) {
                 // Re-encode media for optimization before adding to results
                 await this._reencodeMedia(filePath);
-                results.push(filePath);
+                results.push({ filePath, from: fromTarget || trimmedUsername });
                 
                 // Mark as seen immediately after adding to results
                 if (!this.seen[seenKey]) {

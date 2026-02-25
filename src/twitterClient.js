@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { TwitterApi } = require('twitter-api-v2');
+const logger = require('./logger');
 //import { TwitterV2IncludesHelper } from 'twitter-api-v2';
 
 const DOWNLOADS_DIR = path.resolve(process.cwd(), 'downloads');
@@ -52,7 +53,7 @@ class TwitterClient {
     try {
       fs.writeFileSync(SEEN_FILE, JSON.stringify(this.seen, null, 2));
     } catch (e) {
-      console.error('Failed saving seen file', e);
+      logger.error('Failed saving seen file', { error: e.message || e });
     }
   }
 
@@ -91,8 +92,6 @@ class TwitterClient {
         'media.fields': ['media_key', 'url', 'type', 'variants'],
         max_results: Math.min(Math.max(5, maxCount), 100)
       });
-      // rate limit handling
-      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.TWITTER_RATE_LIMIT_INTERVAL || '1000')));
     } catch (e) {
       // improved debug output for 400s
       if (e && e.data) {
@@ -113,8 +112,18 @@ class TwitterClient {
       const medias = (tweet.attachments?.media_keys || []).map(key => mediaMap.get(key)).filter(Boolean);
       let hadMedia = false;
       for (const media of medias) {
-        const url = media.url;
-        const ext = path.extname(url).split('?')[0] || '.jpg';
+        let url = media.url;
+        // If no direct url (e.g. video), try variants
+        if (!url && Array.isArray(media.variants) && media.variants.length) {
+          const mp4 = media.variants.find(v => v.content_type === 'video/mp4' && v.url) || media.variants.find(v => v.url);
+          url = mp4 && mp4.url;
+        }
+        if (!url) {
+          logger.warn('Skipping media with no URL', { tweetId: tweet.id, mediaKey: media && media.media_key });
+          continue;
+        }
+        const cleanUrl = String(url).split('?')[0];
+        const ext = path.extname(cleanUrl) || '.jpg';
         const fileName = `${tweet.id}_${media.media_key}${ext}`;
         const dest = path.join(userDir, fileName);
         if (!fs.existsSync(dest)) await this._downloadUrl(url, dest);
@@ -152,7 +161,7 @@ class TwitterClient {
             out.push(dest);
           }
         } catch (e) {
-          console.error('Failed processing media', e && e.message ? e.message : e);
+          logger.error('Failed processing media', { error: e.message || e });
         }
       }
     }
@@ -166,15 +175,16 @@ class TwitterClient {
   }
 
   // Download media from a list of twitter usernames (comma-separated string)
-  async fetchMediaFromTargets(commaSeparated) {
-    const names = (commaSeparated || '').split(',').map(s => s.trim()).filter(Boolean);
+  async fetchMediaFromTargets(names, fromTarget) {
     const all = [];
     for (const n of names) {
       try {
+        // rate limit handling
+        await new Promise(resolve => setTimeout(resolve, parseInt(process.env.TWITTER_RATE_LIMIT_INTERVAL || '960000')));
         const files = await this.fetchMediaFromUser(n);
-        all.push(...files);
+        all.push(...files.map(f => ({ filePath: f, from: fromTarget || n })));
       } catch (e) {
-        console.error('Error fetching for', n, e && e.message ? e.message : e);
+        logger.error('Error fetching user', { username: n, error: e.message || e });
       }
     }
     return all;

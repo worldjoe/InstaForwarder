@@ -61,7 +61,7 @@ class TikTokClient {
 
   // Run yt-dlp for each target. Targets can be full TikTok URLs or usernames.
   // Returns array of downloaded file paths (may be empty).
-  async fetchMediaFromTargets(targets = []) {
+  async fetchMediaFromTargets(targets = [], fromTarget) {
     const results = [];
     for (const t of targets) {
       try {
@@ -118,13 +118,14 @@ class TikTokClient {
         
         if (newFiles.length) {
           this.seen[targetId] = Array.from(new Set([...(this.seen[targetId] || []), ...newFiles.map(f => f.id)]));
+          logger.info('Saving to seen new TikTok media', { target: t, count: newFiles.length });
           this._saveSeen();
         }
 
         // mark all as "seen" above, even if we limit them to maxMedia below
         const maxMedia = parseInt(process.env.MAX_TIKTOK_PER_POLL, 10);
         const filtered = isNaN(maxMedia) ? newFiles : newFiles.slice(0, maxMedia);
-        results.push(...filtered.map(f => f.path));
+        results.push(...filtered.map(f => ({ filePath: f.path, from: fromTarget || t })));
 
       } catch (e) {
         logger.error('TikTok fetch error', { target: t, error: e.message || e });

@@ -87,6 +87,10 @@ class IGClient {
         hasTouch: false,
         isLandscape: false
       });
+
+      // Set up the reaction listener
+      await this._setupReactionListener();
+      
     } else {
       logger.debug('Puppeteer browser already initialized, reusing existing instance');
     }
@@ -532,6 +536,167 @@ class IGClient {
     } catch (e) {
       logger.error('Failed to send video via puppeteer', { error: e.message || e, filePath, recipientId });
       return false;
+    }
+  }
+
+  async _setupReactionListener() {
+    if (!this.page) {
+      logger.warn('Cannot set up reaction listener, page is not initialized.');
+      return;
+    }
+
+    try {
+      await this.page.exposeFunction('onNewReaction', async (reactionData) => {
+        const { emoji, messageText } = reactionData;
+        logger.info('New emoji reaction detected!', { emoji, messageText });
+
+        // Log to JSON file
+        const logFilePath = path.resolve(process.cwd(), 'reaction_log.json');
+        let logs = {};
+        try {
+          if (fs.existsSync(logFilePath)) {
+            logs = JSON.parse(fs.readFileSync(logFilePath, 'utf8'));
+          }
+        } catch (e) {
+          logger.warn('Could not read reaction_log.json, starting fresh.', { error: e.message });
+        }
+
+        const [userId, fromTarget] = messageText.split(' ');
+        const key = `${userId}_${fromTarget || ''}`.trim();
+        if (!logs[key]) {
+          logs[key] = {};
+        }
+        if (!logs[key][emoji]) {
+          logs[key][emoji] = 0;
+        }
+        logs[key][emoji]++;
+
+        try {
+          fs.writeFileSync(logFilePath, JSON.stringify(logs, null, 2));
+        } catch (e) {
+          logger.error('Failed to write to reaction_log.json', { error: e.message });
+        }
+
+        // Handle angry emoji
+        if (emoji.includes('😡')) {
+          logger.info('Angry emoji detected. Attempting to unsend message.');
+          try {
+            await this.page.evaluate(async (emojiToFind) => {
+                const emojiSpan = Array.from(document.querySelectorAll('span')).find(s => /\p{Emoji}/u.test(s.innerText) && s.innerText.includes(emojiToFind));
+                if (!emojiSpan) {
+                  console.log(`Could not find emoji span for ${emojiToFind} to start unsend process.`);
+                  return;
+                }
+
+                const messageContainer = emojiSpan.closest('div[role="button"]');
+                 if (!messageContainer) {
+                    console.log('Could not find message container for angry emoji.');
+                    return;
+                }
+
+                // The message container is where the reaction is. We need to find the message it's attached to.
+                // This seems to be a sibling div.
+                const messageRow = messageContainer.parentElement;
+                if (!messageRow) {
+                    console.log('Could not find message row.');
+                    return;
+                }
+                
+                // Hover over the message to make the 'More' button appear
+                const mediaMessage = messageRow.querySelector('div[role="button"][tabindex="0"]');
+                if(mediaMessage) {
+                    mediaMessage.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                    await new Promise(r => setTimeout(r, 500)); // wait for hover effect
+                }
+
+
+                // Find and click the 'More' button (three dots)
+                const moreButton = messageRow.querySelector('div[aria-label="More"]');
+                if (moreButton) {
+                  moreButton.click();
+                  await new Promise(r => setTimeout(r, 500)); // wait for menu
+
+                  // Find and click 'Unsend'
+                  const unsendButton = Array.from(document.querySelectorAll('div[role="button"]')).find(el => el.innerText === 'Unsend');
+                  if (unsendButton) {
+                    unsendButton.click();
+                    await new Promise(r => setTimeout(r, 500)); // wait for confirmation dialog
+
+                    // Find and click 'Unsend' confirmation
+                    const confirmButton = Array.from(document.querySelectorAll('button')).find(el => el.innerText === 'Unsend');
+                    if (confirmButton) {
+                      confirmButton.click();
+                      console.log('Unsend confirmed.');
+                    } else {
+                       console.log('Could not find Unsend confirmation button.');
+                    }
+                  } else {
+                    console.log('Could not find Unsend button in menu.');
+                  }
+                } else {
+                    console.log('Could not find More button.');
+                }
+            }, '😡');
+          } catch (e) {
+            logger.error('Failed to execute unsend logic in Puppeteer', { error: e.message });
+          }
+        }
+      });
+
+      await this.page.evaluate(() => {
+        const observer = new MutationObserver(mutations => {
+          for (const mutation of mutations) {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach(node => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  // Look for a span that contains an emoji
+                  const emojiSpans = Array.from(node.querySelectorAll('span'));
+                  const emojiRegex = /\p{Emoji}/u;
+
+                  for (const span of emojiSpans) {
+                    if (emojiRegex.test(span.innerText)) {
+                      const emoji = span.innerText;
+                      
+                      let messageText = 'Could not determine message content.';
+                      // Find the reaction node, which is a button
+                      const reactionNode = span.closest('div[role="button"]');
+                      if (reactionNode) {
+                        // The reaction is inside a container, which is a sibling of the message container.
+                        // Let's go up to the parent that holds both the message and the reaction list.
+                        const messageRow = reactionNode.parentElement.parentElement; // up to the div that holds the message and reaction
+                        if (messageRow) {
+                            // The message with the text is a previous sibling.
+                            let prevSibling = messageRow.previousElementSibling;
+                            while(prevSibling) {
+                                const textDiv = prevSibling.querySelector('div[dir="auto"]');
+                                if (textDiv && textDiv.innerText.trim() !== '') {
+                                    messageText = textDiv.innerText.trim();
+                                    break; // Found it
+                                }
+                                prevSibling = prevSibling.previousElementSibling;
+                            }
+                        }
+                      }
+                      
+                      window.onNewReaction({ emoji, messageText });
+                      break; // Assume one reaction per mutation
+                    }
+                  }
+                }
+              });
+            }
+          }
+        });
+
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      });
+
+      logger.debug('Emoji reaction listener set up successfully.');
+    } catch (error) {
+      logger.error('Failed to set up emoji reaction listener', { error: error.message || error });
     }
   }
 

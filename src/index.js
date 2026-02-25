@@ -190,14 +190,14 @@ async function pollOnce(clients) {
 
   if (TWITTER_ENABLED) {
       logger.info('Fetching media from Twitter users');
-      const mediaFiles = await clients.twitter.fetchMediaFromTargets(TWITTER_TARGETS);
-      for (const filePath of mediaFiles) {
+      const mediaFiles = await clients.twitter.fetchMediaFromTargets(TWITTER_TARGETS, 'TWITTER_TARGETS');
+      for (const { filePath, from } of mediaFiles) {
         if (WA_ENABLED_FOR_SENDING && clients.wa) {
           logger.info('Forwarding Twitter media via WhatsApp', { file: filePath, recipient: process.env.WHATSAPP_FORWARD_TO });
           await clients.wa.sendMediaAsDM(filePath, process.env.WHATSAPP_FORWARD_TO);
         } else if (IG_ENABLED_SEND_MEDIA && clients.ig) {
           logger.info('Forwarding Twitter media via Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
-          await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, 'Twitter');
+          await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, from);
         } else {
           logger.debug('Twitter media saved (sending disabled)', { file: filePath });
         }
@@ -209,14 +209,14 @@ async function pollOnce(clients) {
     logger.info('Fetching media from TikTok targets');
     try {
       for (const target of TIKTOK_TARGETS) {
-        const mediaFiles = await clients.tiktok.fetchMediaFromTargets([target]);
-        for (const filePath of mediaFiles) {
+        const mediaFiles = await clients.tiktok.fetchMediaFromTargets([target], 'TIKTOK_TARGETS');
+        for (const { filePath, from } of mediaFiles) {
           if (WA_ENABLED_FOR_SENDING && clients.wa) {
             logger.info('Forwarding TikTok media via WhatsApp', { file: filePath, recipient: process.env.WHATSAPP_FORWARD_TO });
             await clients.wa.sendMediaAsDM(filePath, process.env.WHATSAPP_FORWARD_TO);
           } else if (IG_ENABLED_SEND_MEDIA && clients.ig) {
             logger.info('Forwarding TikTok media via Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
-            await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, target);
+            await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, from);
           } else {
             logger.debug('TikTok media saved (sending disabled)', { file: filePath });
           }
@@ -232,14 +232,14 @@ async function pollOnce(clients) {
     logger.info('Fetching media from RedGif targets');
     try {
       for (const target of REDGIF_TARGETS) {
-        const mediaFiles = await clients.redgif.fetchMediaFromTargets([target]);
-        for (const filePath of mediaFiles) {
+        const mediaFiles = await clients.redgif.fetchMediaFromTargets([target], 'REDGIF_TARGETS');
+        for (const { filePath, from } of mediaFiles) {
           if (WA_ENABLED_FOR_SENDING && clients.wa) {
             logger.info('Forwarding RedGif media via WhatsApp', { file: filePath, recipient: process.env.WHATSAPP_FORWARD_TO });
             await clients.wa.sendMediaAsDM(filePath, process.env.WHATSAPP_FORWARD_TO);
           } else if (IG_ENABLED_SEND_MEDIA && clients.ig) {
             logger.info('Forwarding RedGif media via Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
-            await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, target);
+            await clients.ig.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, from);
           } else {
             logger.debug('RedGif media saved (sending disabled)', { file: filePath });
           }
@@ -255,10 +255,10 @@ async function pollOnce(clients) {
   if (TWITTER_ENABLED && IG_ENABLED_SEND_MEDIA_2 && TWITTER_TARGETS_2.length) {
     logger.info('Fetching media from secondary Twitter users');
     try {
-      const mediaFiles = await clients.twitter.fetchMediaFromTargets(TWITTER_TARGETS_2);
-      for (const filePath of mediaFiles) {
+      const mediaFiles = await clients.twitter.fetchMediaFromTargets(TWITTER_TARGETS_2, 'TWITTER_TARGETS_2');
+      for (const { filePath, from } of mediaFiles) {
         logger.info('Forwarding Twitter media via secondary Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
-        await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, 'Twitter');
+        await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, from);
       }
     } catch (e) {
       logger.error('Error polling secondary Twitter targets', { error: e.message || e });
@@ -271,10 +271,10 @@ async function pollOnce(clients) {
     logger.info('Fetching media from secondary TikTok targets');
     try {
       for (const target of TIKTOK_TARGETS_2) {
-        const mediaFiles = await clients.tiktok.fetchMediaFromTargets([target]);
-        for (const filePath of mediaFiles) {
+        const mediaFiles = await clients.tiktok.fetchMediaFromTargets([target], 'TIKTOK_TARGETS_2');
+        for (const { filePath, from } of mediaFiles) {
           logger.info('Forwarding TikTok media via secondary Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
-          await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, target);
+          await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, from);
         }
       }
     } catch (e) {
@@ -288,10 +288,10 @@ async function pollOnce(clients) {
     logger.info('Fetching media from secondary RedGif targets');
     try {
       for (const target of REDGIF_TARGETS_2) {
-        const mediaFiles = await clients.redgif.fetchMediaFromTargets([target]);
-        for (const filePath of mediaFiles) {
+        const mediaFiles = await clients.redgif.fetchMediaFromTargets([target], 'REDGIF_TARGETS_2');
+        for (const { filePath, from } of mediaFiles) {
           logger.info('Forwarding RedGif media via secondary Instagram', { file: filePath, recipient: process.env.INSTAGRAM_FORWARD_TO });
-          await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, target);
+          await clients.ig2.sendMediaAsDM(filePath, process.env.INSTAGRAM_FORWARD_TO, from);
         }
       }
     } catch (e) {
